@@ -5,6 +5,8 @@ on:
   push:
     paths: ["mobile/**", ".github/workflows/build-android.yml"]
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -35,3 +37,10 @@ jobs:
         with:
           name: Ghosthunter-Mobile-APK
           path: Ghosthunter-Mobile-v5.1.apk
+      - name: Put the APK on the Releases page
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v5.1 >/dev/null 2>&1 || gh release create v5.1 --title "Ghost Hunter v5.1" --notes "Android: download Ghosthunter-Mobile-v5.1.apk on your phone and tap it to install."
+          gh release upload v5.1 Ghosthunter-Mobile-v5.1.apk --clobber
