@@ -1,0 +1,16 @@
+name: Attach Windows exe to release
+on:
+  push:
+    branches: [exe-upload]
+permissions:
+  contents: write
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          cp "Ghost Hunter v5.1.exe" "Ghost-Hunter-v5.1-Windows.exe"
+          gh release upload v5.1 "Ghost-Hunter-v5.1-Windows.exe" --clobber --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
