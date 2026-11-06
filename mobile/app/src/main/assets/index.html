@@ -66,7 +66,7 @@ a{color:#f0a070}
 <body>
 <header>
   <svg width="40" height="40" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="31" fill="#1d232a" stroke="#e0763a" stroke-width="2"/><path d="M8 34 L20 24 L26 30 L32 21 L38 30 L44 24 L56 34 L44 36 L32 44 L20 36Z" fill="#e0763a"/></svg>
-  <div><h1>Ghost Hunter</h1><div class="sub">Bat counter &amp; ghost bat ID · mobile v5.1 (build 5109: ghost/other tags + full report)</div></div>
+  <div><h1>Ghost Hunter</h1><div class="sub">Bat counter &amp; ghost bat ID · mobile v5.1 (build 5110: shape zones, ghost/other tags, full report)</div></div>
   <div class="lock" id="lock">🔒 Private</div>
 </header>
 <nav>
@@ -88,11 +88,12 @@ a{color:#f0a070}
 
   <div class="card hide" id="lineCard">
     <div class="step"><div class="num">2</div><div style="flex:1">
-      <h2>Draw the counting line or box</h2>
-      <div class="row" style="margin-bottom:8px"><button class="btn sec" id="modeLine">Line</button><button class="btn sec" id="modeBox">Box zone</button></div>
+      <h2>Draw the counting line or zone</h2>
+      <div class="row" style="margin-bottom:8px"><button class="btn sec" id="modeLine">Line</button><button class="btn sec" id="modeBox">Box zone</button><button class="btn sec" id="modeShape">Shape zone</button></div>
       <p class="mut" id="lineHelp">Tap where the line <b>starts</b>.</p>
       <canvas class="view" id="setupCv"></canvas>
       <div class="row" style="margin-top:8px"><button class="btn sec" id="lineReset">Redraw line</button><button class="btn sec" id="lineDefault">Use middle line</button></div>
+      <div class="row hide" id="shapeBtns" style="margin-top:8px"><button class="btn sec" id="shapeUndo">Undo last point</button><button class="btn sec" id="shapeFinish">Finish shape</button></div>
     </div></div>
   </div>
 
@@ -525,7 +526,13 @@ a{color:#f0a070}
     let frames = 0, nextId = 0, tracks = new Map();
     const events = [];
     let insideSign, side, along;
-    if (line.box) {   // Mobile: box zone. Into the box = IN, out of the box = OUT (as on the PC).
+    if (line.poly) {   // PC-style shape zone: tap points around the cave entrance. Into it = IN, out = OUT.
+      const P = line.poly, n = P.length;
+      insideSign = 1; along = () => true;
+      const inPoly = (p) => { let c = false; for (let i = 0, j = n - 1; i < n; j = i++) { const [xi, yi] = P[i], [xj, yj] = P[j]; if ((yi > p[1]) !== (yj > p[1]) && p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi) c = !c; } return c; };
+      const segD = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1; const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L)); return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); };
+      side = (p) => { let d = Infinity; for (let i = 0; i < n; i++) d = Math.min(d, segD(p, P[i], P[(i + 1) % n])); return d <= o.deadZone ? 0 : (inPoly(p) ? 1 : -1); };
+    } else if (line.box) {   // Mobile: box zone. Into the box = IN, out of the box = OUT (as on the PC).
       const [x0, y0, x1, y1] = line.box;
       insideSign = 1; along = () => true;
       side = (p) => {
@@ -839,6 +846,14 @@ function drawSetup() {
   const s = setupCv.width / 400;
   c.lineWidth = 3 * s; c.strokeStyle = "#e0763a"; c.fillStyle = "#e0763a";
   linePts.forEach((p) => { c.beginPath(); c.arc(p[0], p[1], 6 * s, 0, 7); c.fill(); });
+  if (zoneMode === "shape") {
+    const P = line && line.poly ? line.poly : linePts;
+    c.strokeStyle = "#3fb36b"; c.fillStyle = "#3fb36b";
+    P.forEach((p) => { c.beginPath(); c.arc(p[0], p[1], 6 * s, 0, 7); c.fill(); });
+    if (P.length >= 2) { c.beginPath(); c.moveTo(...P[0]); P.slice(1).forEach((q) => c.lineTo(...q)); if (line) c.closePath(); c.stroke(); }
+    if (line && line.poly) { c.fillStyle = "rgba(63,179,107,.18)"; c.fill(); c.font = `bold ${14 * s}px sans-serif`; c.fillStyle = "#3fb36b"; c.fillText("Roost zone (IN)", P[0][0] + 8 * s, P[0][1] - 8 * s); }
+    return;
+  }
   if (linePts.length >= 2) { c.beginPath(); c.moveTo(...linePts[0]); c.lineTo(...linePts[1]); c.stroke(); }
   if (zoneMode === "box" && boxDrag) { c.lineWidth = 3 * s; c.strokeStyle = "#3fb36b"; const [x0, y0, x1, y1] = boxDrag; c.strokeRect(x0, y0, x1 - x0, y1 - y0); }
   if (line && line.box) { const [x0, y0, x1, y1] = line.box; c.fillStyle = "rgba(63,179,107,.18)"; c.fillRect(x0, y0, x1 - x0, y1 - y0); c.lineWidth = 3 * s; c.strokeStyle = "#3fb36b"; c.strokeRect(x0, y0, x1 - x0, y1 - y0);
@@ -850,13 +865,23 @@ let zoneMode = "line", boxDrag = null, boxStart = null;
 const cvPt = (e) => { const r = setupCv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width * setupCv.width, (e.clientY - r.top) / r.height * setupCv.height]; };
 function setZoneMode(m) {
   zoneMode = m; linePts = []; line = null; boxDrag = boxStart = null;
-  $("modeLine").classList.toggle("on", m === "line"); $("modeBox").classList.toggle("on", m === "box");
-  $("lineReset").textContent = m === "box" ? "Redraw box" : "Redraw line";
-  $("lineHelp").innerHTML = m === "box" ? "Drag a box around the <b>roost / cave entrance</b>. Bats flying <b>into</b> the box count IN, <b>out of</b> it count OUT." : "Tap where the line <b>starts</b>.";
+  $("modeLine").classList.toggle("on", m === "line"); $("modeBox").classList.toggle("on", m === "box"); $("modeShape").classList.toggle("on", m === "shape");
+  $("shapeBtns").classList.toggle("hide", m !== "shape");
+  $("lineReset").textContent = m === "box" ? "Redraw box" : m === "shape" ? "Clear all" : "Redraw line";
+  $("lineHelp").innerHTML = m === "shape" ? "Tap points around the <b>cave entrance</b>, then press <b>Finish shape</b>. Bats flying <b>into</b> the shape count IN, <b>out of</b> it count OUT." : m === "box" ? "Drag a box around the <b>roost / cave entrance</b>. Bats flying <b>into</b> the box count IN, <b>out of</b> it count OUT." : "Tap where the line <b>starts</b>.";
   if (setupCv.width) drawSetup();
 }
 $("modeLine").onclick = () => setZoneMode("line");
 $("modeBox").onclick = () => setZoneMode("box");
+$("modeShape").onclick = () => setZoneMode("shape");
+$("shapeUndo").onclick = () => { if (zoneMode !== "shape") return; line = null; linePts.pop(); $("lineHelp").innerHTML = linePts.length ? `${linePts.length} point(s). Keep tapping around the entrance, then <b>Finish shape</b>.` : "Tap points around the <b>cave entrance</b>, then press <b>Finish shape</b>."; drawSetup(); };
+$("shapeFinish").onclick = () => {
+  if (zoneMode !== "shape" || line) return;
+  if (linePts.length < 3) { $("lineHelp").innerHTML = "A shape needs at least <b>3 points</b>. Tap more points around the entrance."; return; }
+  const xs = linePts.map((p) => p[0]), ys = linePts.map((p) => p[1]), cx = xs.reduce((a, b) => a + b, 0) / xs.length, cy = ys.reduce((a, b) => a + b, 0) / ys.length;
+  line = { poly: linePts.slice(), a: linePts[0], b: linePts[1], inside: [cx, cy] };
+  $("lineHelp").innerHTML = `✔ Shape set (${linePts.length} points). Bats flying <b>into</b> it count IN, <b>out of</b> it count OUT.`; drawSetup();
+};
 setupCv.addEventListener("pointermove", (e) => {
   if (zoneMode !== "box" || !boxStart) return;
   const p = cvPt(e); boxDrag = [Math.min(boxStart[0], p[0]), Math.min(boxStart[1], p[1]), Math.max(boxStart[0], p[0]), Math.max(boxStart[1], p[1])]; drawSetup();
@@ -875,6 +900,7 @@ setupCv.addEventListener("pointercancel", endBox);
 setupCv.addEventListener("pointerdown", (e) => {
   if (zoneMode === "box") { if (line) return; setupCv.setPointerCapture && setupCv.setPointerCapture(e.pointerId); boxStart = cvPt(e); boxDrag = [...boxStart, ...boxStart]; return; }
   if (line) return;
+  if (zoneMode === "shape") { linePts.push(cvPt(e)); $("lineHelp").innerHTML = `${linePts.length} point(s). Keep tapping around the entrance, then <b>Finish shape</b>.`; drawSetup(); return; }
   const r = setupCv.getBoundingClientRect();
   const p = [(e.clientX - r.left) / r.width * setupCv.width, (e.clientY - r.top) / r.height * setupCv.height];
   linePts.push(p);
@@ -899,6 +925,7 @@ $("batWav").onchange = async (e) => {
 let stopFlag = false;
 $("stop").onclick = () => { stopFlag = true; };
 $("go").onclick = async () => {
+  if (!line && zoneMode === "shape" && linePts.length >= 3) $("shapeFinish").onclick();
   if (!line) { $("lineDefault").onclick(); }
   stopFlag = false; $("go").disabled = true; $("runBox").classList.remove("hide"); $("resCard").classList.add("hide"); $("repCard").classList.add("hide");
   const PW = +$("pw").value, sc = PW / 960;
@@ -907,7 +934,7 @@ $("go").onclick = async () => {
     minTravel: +$("mtrav").value * sc, minPoints: Math.max(1, +$("mpts").value), oneDir: +$("odir").value, axisTol: +$("axt").value, thin: +$("thin").value,
     maxMissed: +$("miss").value, warmup: +$("warm").value, edges: [+$("eL").value, +$("eR").value, +$("eT").value, +$("eB").value],
     polarity: +$("pol").value, minContrast: +$("mcon").value, minLengths: +$("mlen").value, minStraight: +$("mstr").value, streaks: $("strk").value === "1" };
-  const lineP = { a: line.a.map((v) => v * k), b: line.b.map((v) => v * k), inside: line.inside.map((v) => v * k), box: line.box ? line.box.map((v) => v * k) : null };
+  const lineP = { a: line.a.map((v) => v * k), b: line.b.map((v) => v * k), inside: line.inside.map((v) => v * k), box: line.box ? line.box.map((v) => v * k) : null, poly: line.poly ? line.poly.map((q) => q.map((v) => v * k)) : null };
   const counter = GHV.makeCounter(pw, ph, lineP, opts);
   lastProcW = pw;
   const proc = document.createElement("canvas"); proc.width = pw; proc.height = ph; const pctx = proc.getContext("2d", { willReadFrequently: true });
@@ -927,7 +954,8 @@ $("go").onclick = async () => {
     }
     if (++frameN % 2 === 0) {
       lctx.drawImage(proc, 0, 0); lctx.lineWidth = 2; lctx.strokeStyle = "#e0763a";
-      if (lineP.box) { const [x0, y0, x1, y1] = lineP.box; lctx.strokeRect(x0, y0, x1 - x0, y1 - y0); }
+      if (lineP.poly) { lctx.beginPath(); lctx.moveTo(...lineP.poly[0]); lineP.poly.slice(1).forEach((q) => lctx.lineTo(...q)); lctx.closePath(); lctx.stroke(); }
+      else if (lineP.box) { const [x0, y0, x1, y1] = lineP.box; lctx.strokeRect(x0, y0, x1 - x0, y1 - y0); }
       else { lctx.beginPath(); lctx.moveTo(...lineP.a); lctx.lineTo(...lineP.b); lctx.stroke(); }
       lctx.strokeStyle = "#3fb36b"; dets.forEach((dd) => lctx.strokeRect(...dd.box));
       const cn = counter.counts(); lctx.fillStyle = "rgba(0,0,0,.6)"; lctx.fillRect(0, 0, 150, 52);
@@ -997,8 +1025,8 @@ async function finishVideo(events, duration) {
       <div class="rv dirq" style="display:none"><button class="btn sec" data-dir="IN" data-i="${i}">IN</button><button class="btn sec" data-dir="OUT" data-i="${i}">OUT</button></div>
       <div class="rv"><button class="btn sec" data-play="${i}">▶ Replay</button><button class="btn sec ok" data-ok="${i}">✔ Bat</button><button class="btn sec no" data-no="${i}">✘ Not a bat</button></div>
       <div class="rv"><button class="btn sec gh" data-sp="ghost" data-i="${i}">👻 Ghost bat</button><button class="btn sec ot" data-sp="other" data-i="${i}">Other bat</button></div><div class="spLine" style="margin-top:4px"></div></div></div>`).join("")
-    : `<p class="mut">No bats crossed the ${line && line.box ? "box" : "line"}. Try a lower Sensitivity number, or check the ${line && line.box ? "box" : "line"} is where bats fly.</p>`;
-  reviewEvents = events; reviewSrc = src; reviewZone = line && line.box ? { box: line.box } : line ? { a: line.a, b: line.b } : null;
+    : `<p class="mut">No bats crossed the ${line && (line.box || line.poly) ? "zone" : "line"}. Try a lower Sensitivity number, or check the ${line && (line.box || line.poly) ? "zone" : "line"} is where bats fly.</p>`;
+  reviewEvents = events; reviewSrc = src; reviewZone = line && line.poly ? { poly: line.poly } : line && line.box ? { box: line.box } : line ? { a: line.a, b: line.b } : null;
   $("replayCard").style.display = "none"; refreshReview();
   $("csvV").classList.add("hide"); $("copyV").textContent = "Copy results (paste into Excel / notes)";
   $("resCard").classList.remove("hide"); $("resCard").scrollIntoView({ behavior: "smooth" });
@@ -1044,7 +1072,8 @@ function drawReplayZone() {
   // keep the overlay inside the picture area of the video element (letterboxing)
   c.style.height = (v.getBoundingClientRect().width * c.height / c.width) + "px";
   g.lineWidth = 3 * s; g.strokeStyle = "#e0763a";
-  if (reviewZone && reviewZone.box) { const [x0, y0, x1, y1] = reviewZone.box; g.strokeStyle = "#3fb36b"; g.strokeRect(x0, y0, x1 - x0, y1 - y0); }
+  if (reviewZone && reviewZone.poly) { g.strokeStyle = "#3fb36b"; g.beginPath(); g.moveTo(...reviewZone.poly[0]); reviewZone.poly.slice(1).forEach((q) => g.lineTo(...q)); g.closePath(); g.stroke(); }
+  else if (reviewZone && reviewZone.box) { const [x0, y0, x1, y1] = reviewZone.box; g.strokeStyle = "#3fb36b"; g.strokeRect(x0, y0, x1 - x0, y1 - y0); }
   else if (reviewZone) { g.beginPath(); g.moveTo(...reviewZone.a); g.lineTo(...reviewZone.b); g.stroke(); }
   if (e && e.box) { const k = (v.videoWidth || 1) / (lastProcW || v.videoWidth || 1); const [x, y, w, h] = e.box.map((q) => q * k); g.strokeStyle = "#ffd54a"; g.lineWidth = 2 * s; g.strokeRect(x - 6 * s, y - 6 * s, w + 12 * s, h + 12 * s); }
 }
