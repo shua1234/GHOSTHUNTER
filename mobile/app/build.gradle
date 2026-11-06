@@ -1,0 +1,44 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "au.ghosthunter.mobile"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "au.ghosthunter.mobile"
+        minSdk 24
+        targetSdk 35
+        // Bump both when the app changes, so phones update over the old version.
+        versionCode 5101
+        versionName "5.1"
+    }
+
+    signingConfigs {
+        release {
+            // Optional: set the repo secrets ANDROID_KEYSTORE_B64 / ANDROID_KEY_PASSWORD
+            // so every build is signed with the same key and installs over the last one.
+            def ks = System.getenv("ANDROID_KEYSTORE_FILE")
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv("ANDROID_KEY_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: "ghosthunter"
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig System.getenv("ANDROID_KEYSTORE_FILE") ?
+                    signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
