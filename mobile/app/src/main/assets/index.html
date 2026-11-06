@@ -114,6 +114,19 @@ a{color:#f0a070}
           <span>Bat must stand out by (grey levels, 0 = off)</span><input type="number" id="mcon" value="0" min="0" max="255">
           <span>Bat must travel at least (body lengths, 0 = off)</span><input type="number" id="mlen" value="2" min="0" max="50">
           <span>Track must head somewhere (% straight, 0 = off)</span><input type="number" id="mstr" value="50" min="0" max="95">
+          <span>Bat must travel at least (px at 960, 0 = off)</span><input type="number" id="mtrav" value="22" min="0">
+          <span>Frames a bat must be followed before it counts</span><input type="number" id="mpts" value="3" min="1" max="30">
+          <span>Movement must be one direction (%, 0 = off)</span><input type="number" id="odir" value="30" min="0" max="100">
+          <span>Ignore straight sideways/up-down streaks (degrees, 0 = off)</span><input type="number" id="axt" value="6" min="0" max="45">
+          <span>Ignore thin line shapes (long:wide, 0 = off)</span><input type="number" id="thin" value="0" min="0" max="50">
+          <span>Frames a bat can vanish</span><input type="number" id="miss" value="6" min="0" max="60">
+          <span>Warm-up frames</span><input type="number" id="warm" value="30" min="0">
+          <span>Zone edge dead zone (px at 960)</span><input type="number" id="dz" value="2" min="0">
+          <span>Only analyse first N seconds (0 = all)</span><input type="number" id="firstN" value="0" min="0">
+          <span>Ignore left edge of picture (%)</span><input type="number" id="eL" value="0" min="0" max="45">
+          <span>Ignore right edge of picture (%)</span><input type="number" id="eR" value="0" min="0" max="45">
+          <span>Ignore top edge of picture (%)</span><input type="number" id="eT" value="0" min="0" max="45">
+          <span>Ignore bottom edge of picture (%)</span><input type="number" id="eB" value="0" min="0" max="45">
           <span>Count fast bats seen as one streak</span><select id="strk"><option value="1" selected>Yes</option><option value="0">No</option></select>
           <span>Playback speed while counting</span><select id="rate"><option value="1" selected>1× (most accurate)</option><option value="2">2×</option><option value="4">4× (fast phones / laptops)</option></select>
         </div>
@@ -503,7 +516,7 @@ a{color:#f0a070}
       deadZone: 2, warmup: 30, history: 300,
       // Mobile: checks from the PC version (0 = off)
       minPoints: 3, minTravel: 15, minLengths: 2, minStraight: 50, nucGuard: 10, streaks: true,
-      recountGap: 15, polarity: 0, minContrast: 0, axisTol: 6 }, opts || {});
+      recountGap: 15, polarity: 0, minContrast: 0, axisTol: 6, thin: 0, oneDir: 30, edges: [0, 0, 0, 0] }, opts || {});
     let prevGray = null, lastDets = [], skipped = 0, allFrames = 0, lastT = null, gapT = 1 / 30;
     const N = w * h;
     const mean = new Float32Array(N), vari = new Float32Array(N);
@@ -574,6 +587,9 @@ a{color:#f0a070}
         }
         const bw = x1 - x0 + 1, bh = y1 - y0 + 1, long = Math.max(bw, bh), short = Math.min(bw, bh);
         const streak = long >= 3 * short && long >= 6 * Math.sqrt(o.minArea);   // a fast bat blurred into a streak
+        const cx = x0 + (bw >> 1), cy = y0 + (bh >> 1), E = o.edges;   // PC: ignore left / right / top / bottom edge of picture (%)
+        if (cx < w * E[0] / 100 || cx > w * (1 - E[1] / 100) || cy < h * E[2] / 100 || cy > h * (1 - E[3] / 100)) continue;
+        if (o.thin > 0 && long >= o.thin * short && area >= 0.6 * bw * bh) continue;   // PC: thin solid line shapes (wires, scratches)
         if (area >= o.minArea && (area <= o.maxArea || (streak && area <= o.maxArea * 12)))
           dets.push({ c: [x0 + (bw >> 1), y0 + (bh >> 1)], box: [x0, y0, bw, bh], area, streak });
       }
@@ -651,8 +667,10 @@ a{color:#f0a070}
         let straight = 1;
         if (pts >= 3) { let path = 0; const tt = tr.trail.concat([nc]); for (let q = 1; q < tt.length; q++) path += Math.hypot(tt[q][0] - tt[q - 1][0], tt[q][1] - tt[q - 1][1]); straight = path > 0 ? Math.hypot(nc[0] - tt[0][0], nc[1] - tt[0][1]) / path : 1; }
         const fast = d.streak || travel > 4 * body;   // few pictures of a fast bat: judge it on distance alone
-        const checksOk = (fast || pts >= o.minPoints) && travel >= o.minTravel * Math.sqrt(o.minArea / 5.33)
-          && travel >= o.minLengths * body && (pts < 3 || straight * 100 >= o.minStraight);
+        let fwd = 1;   // PC: movement must be one direction (% of steps heading the same way as the whole track)
+        if (pts >= 3) { const tt = tr.trail.concat([nc]), nx = nc[0] - tt[0][0], ny = nc[1] - tt[0][1]; let f = 0; for (let q = 1; q < tt.length; q++) if ((tt[q][0] - tt[q - 1][0]) * nx + (tt[q][1] - tt[q - 1][1]) * ny > 0) f++; fwd = f / (tt.length - 1); }
+        const checksOk = (fast || pts >= o.minPoints) && travel >= o.minTravel
+          && travel >= o.minLengths * body && (pts < 3 || straight * 100 >= o.minStraight) && (pts < 3 || fwd * 100 >= o.oneDir);
         tr.areas = (tr.areas || []).concat([d.area]).slice(-12); tr.streaks = (tr.streaks || 0) + (d.streak ? 1 : 0);
         // PC rule: a perfectly level or upright, thin, never-changing shape is a camera streak, not a bat
         const ang = Math.abs(Math.atan2(nc[1] - tr.start[1], nc[0] - tr.start[0]) * 180 / Math.PI) % 90;
@@ -885,7 +903,9 @@ $("go").onclick = async () => {
   stopFlag = false; $("go").disabled = true; $("runBox").classList.remove("hide"); $("resCard").classList.add("hide"); $("repCard").classList.add("hide");
   const PW = +$("pw").value, sc = PW / 960;
   const pw = Math.min(PW, video.videoWidth), ph = Math.round(video.videoHeight * pw / video.videoWidth), k = pw / video.videoWidth;
-  const opts = { sensitivity: +$("sens").value, minArea: Math.max(1, +$("minA").value * sc * sc), maxArea: +$("maxA").value * sc * sc, gate: +$("gate").value * sc, deadZone: 2,
+  const opts = { sensitivity: +$("sens").value, minArea: Math.max(1, +$("minA").value * sc * sc), maxArea: +$("maxA").value * sc * sc, gate: +$("gate").value * sc, deadZone: +$("dz").value * sc,
+    minTravel: +$("mtrav").value * sc, minPoints: Math.max(1, +$("mpts").value), oneDir: +$("odir").value, axisTol: +$("axt").value, thin: +$("thin").value,
+    maxMissed: +$("miss").value, warmup: +$("warm").value, edges: [+$("eL").value, +$("eR").value, +$("eT").value, +$("eB").value],
     polarity: +$("pol").value, minContrast: +$("mcon").value, minLengths: +$("mlen").value, minStraight: +$("mstr").value, streaks: $("strk").value === "1" };
   const lineP = { a: line.a.map((v) => v * k), b: line.b.map((v) => v * k), inside: line.inside.map((v) => v * k), box: line.box ? line.box.map((v) => v * k) : null };
   const counter = GHV.makeCounter(pw, ph, lineP, opts);
@@ -893,8 +913,9 @@ $("go").onclick = async () => {
   const proc = document.createElement("canvas"); proc.width = pw; proc.height = ph; const pctx = proc.getContext("2d", { willReadFrequently: true });
   const live = $("liveCv"); live.width = pw; live.height = ph; const lctx = live.getContext("2d");
   const gray = new Uint8Array(pw * ph), crops = [];
-  let frameN = 0;
+  let frameN = 0; const firstN = +$("firstN").value;
   const handle = (t) => {
+    if (firstN > 0 && t > firstN) { stopFlag = true; return; }
     pctx.drawImage(video, 0, 0, pw, ph);
     const d = pctx.getImageData(0, 0, pw, ph).data;
     for (let i = 0, j = 0; i < gray.length; i++, j += 4) gray[i] = (d[j] * 77 + d[j + 1] * 150 + d[j + 2] * 29) >> 8;
@@ -1191,6 +1212,12 @@ function renderReport() {
   el.addEventListener("change", () => { if (id !== "recStart") try { localStorage.setItem("ghm_" + id, el.value); } catch (_) {} refreshReview(); });
 });
 $("repBin").onchange = renderReport;
+// Remember counting settings between uses (like Save setup on the PC)
+document.querySelectorAll("details .set input, details .set select").forEach((el) => {
+  if (!el.id || ["recStart", "lat", "lon", "tz"].includes(el.id)) return;
+  try { const v = localStorage.getItem("ghm_set_" + el.id); if (v != null) el.value = v; } catch (_) {}
+  el.addEventListener("change", () => { try { localStorage.setItem("ghm_set_" + el.id, el.value); } catch (_) {} });
+});
 try { const c = localStorage.getItem("ghm_cave"); if (c) $("cave").value = c; } catch (_) {}
 $("cave").onchange = () => { try { localStorage.setItem("ghm_cave", $("cave").value); } catch (_) {} renderReport(); };
 $("accGo").onclick = () => {
