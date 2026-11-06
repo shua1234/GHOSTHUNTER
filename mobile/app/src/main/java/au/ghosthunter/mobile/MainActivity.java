@@ -24,6 +24,11 @@ public class MainActivity extends Activity {
     private WebView web;
     private ValueCallback<Uri[]> pending;
 
+    static final String FIX_CORNER_BAT =
+            "(function(){var b=document.getElementById('ghostBatCorner');if(!b)return;"
+            + "b.style.position='static';b.style.display='block';"
+            + "b.style.margin='24px 0 16px 16px';b.style.width='96px';b.style.height='68px';})();";
+
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -39,6 +44,13 @@ public class MainActivity extends Activity {
         ws.setBuiltInZoomControls(false);
 
         web.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                // On a phone the flapping bat in the corner sits on top of the buttons.
+                // Move it out of the way: it goes below everything at the end of the page.
+                view.evaluateJavascript(FIX_CORNER_BAT, null);
+            }
+
             @Override
             @SuppressWarnings("deprecation")
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
