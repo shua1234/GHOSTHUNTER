@@ -24,8 +24,7 @@ public class MainActivity extends Activity {
     private WebView web;
     private ValueCallback<Uri[]> pending;
 
-    static final String FIX_CORNER_BAT =
-            "(function(){var b=document.getElementById('ghostBatCorner');if(b)b.remove();})();";
+    private String mobileFixes = "";
 
     @Override
     protected void onCreate(Bundle state) {
@@ -33,6 +32,8 @@ public class MainActivity extends Activity {
         web = new WebView(this);
         web.setBackgroundColor(0xFF14181D);
         setContentView(web);
+
+        mobileFixes = readAsset("mobile_fixes.js");
 
         WebSettings ws = web.getSettings();
         ws.setJavaScriptEnabled(true);
@@ -44,9 +45,9 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
-                // On a phone the flapping bat in the corner sits on top of the buttons,
-                // so the mobile app leaves it out completely.
-                view.evaluateJavascript(FIX_CORNER_BAT, null);
+                // Phone-only tweaks (assets/mobile_fixes.js): no corner bat, reliable
+                // video playback, and a clear message instead of a stuck Count button.
+                view.evaluateJavascript(mobileFixes, null);
             }
 
             @Override
@@ -99,6 +100,18 @@ public class MainActivity extends Activity {
             web.restoreState(state);
         } else {
             web.loadUrl("file:///android_asset/index.html");
+        }
+    }
+
+    private String readAsset(String name) {
+        try (java.io.InputStream in = getAssets().open(name)) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            return out.toString("UTF-8");
+        } catch (java.io.IOException e) {
+            return "";
         }
     }
 
