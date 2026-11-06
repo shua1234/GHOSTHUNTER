@@ -36,7 +36,7 @@ input[type=file]{display:none}
 .row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}
 .btn.sec.on{background:var(--acc);color:#1a0f08;border-color:var(--acc)}
 .rv{display:flex;gap:6px;margin-top:6px}.rv button{flex:1;padding:7px 6px;font-size:13.5px;border-radius:9px}
-.rv .ok.on{background:var(--ok);color:#06150c;border-color:var(--ok)}.rv .no.on{background:var(--bad);color:#1a0606;border-color:var(--bad)}
+.rv [data-dir].on{background:var(--acc);color:#1a0f08;border-color:var(--acc)}.rv .ok.on{background:var(--ok);color:#06150c;border-color:var(--ok)}.rv .no.on{background:var(--bad);color:#1a0606;border-color:var(--bad)}
 .ev.rej{opacity:.5}
 canvas.view{width:100%;border-radius:10px;background:#000;display:block;touch-action:none}
 .big{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
@@ -110,6 +110,11 @@ a{color:#f0a070}
           <span>Smallest bat (pixels at 960 px)</span><input type="number" id="minA" value="12" min="1">
           <span>Largest bat (pixels at 960 px)</span><input type="number" id="maxA" value="2500" min="10">
           <span>Max bat travel per frame (px at 960)</span><input type="number" id="gate" value="60" min="5">
+          <span>Bats show as (thermal)</span><select id="pol"><option value="0" selected>Either</option><option value="1">Brighter (white-hot)</option><option value="2">Darker (black-hot)</option></select>
+          <span>Bat must stand out by (grey levels, 0 = off)</span><input type="number" id="mcon" value="0" min="0" max="255">
+          <span>Bat must travel at least (body lengths, 0 = off)</span><input type="number" id="mlen" value="2" min="0" max="50">
+          <span>Track must head somewhere (% straight, 0 = off)</span><input type="number" id="mstr" value="50" min="0" max="95">
+          <span>Count fast bats seen as one streak</span><select id="strk"><option value="1" selected>Yes</option><option value="0">No</option></select>
           <span>Playback speed while counting</span><select id="rate"><option value="1" selected>1× (most accurate)</option><option value="2">2×</option><option value="4">4× (fast phones / laptops)</option></select>
         </div>
       </details>
@@ -468,7 +473,11 @@ a{color:#f0a070}
   function makeCounter(w, h, line, opts) {
     // line = {a:[x,y], b:[x,y], inside:[x,y]} in processing pixels
     const o = Object.assign({ sensitivity: 25, minArea: 5, maxArea: 1100, gate: 40, maxMissed: 6,
-      deadZone: 2, warmup: 30, history: 300 }, opts || {});
+      deadZone: 2, warmup: 30, history: 300,
+      // Mobile: checks from the PC version (0 = off)
+      minPoints: 3, minTravel: 15, minLengths: 2, minStraight: 50, nucGuard: 10, streaks: true,
+      recountGap: 15, polarity: 0, minContrast: 0, axisTol: 6 }, opts || {});
+    let prevGray = null, lastDets = [], skipped = 0, allFrames = 0;
     const N = w * h;
     const mean = new Float32Array(N), vari = new Float32Array(N);
     const blur = new Float32Array(N), tmp = new Float32Array(N);
@@ -536,15 +545,45 @@ a{color:#f0a070}
             if (fg[j] && !lab[j]) { lab[j] = id; stack.push(j); }
           }
         }
-        if (area >= o.minArea && area <= o.maxArea)
-          dets.push({ c: [x0 + ((x1 - x0 + 1) >> 1), y0 + ((y1 - y0 + 1) >> 1)], box: [x0, y0, x1 - x0 + 1, y1 - y0 + 1], area });
+        const bw = x1 - x0 + 1, bh = y1 - y0 + 1, long = Math.max(bw, bh), short = Math.min(bw, bh);
+        const streak = long >= 3 * short && long >= 6 * Math.sqrt(o.minArea);   // a fast bat blurred into a streak
+        if (area >= o.minArea && (area <= o.maxArea || (streak && area <= o.maxArea * 12)))
+          dets.push({ c: [x0 + (bw >> 1), y0 + (bh >> 1)], box: [x0, y0, bw, bh], area, streak });
       }
       if (dets.length > 80) { dets.sort((a, b) => b.area - a.area); dets.length = 80; }
       return dets;
     }
 
+    // Mobile: thermal check - how much warmer (+) or cooler (-) the blob is than the ground right around it
+    function contrast(gray, box) {
+      const [x, y, bw, bh] = box, pad = Math.max(3, Math.round(Math.max(bw, bh) / 2));
+      let si = 0, ni = 0, so = 0, no = 0;
+      const X0 = Math.max(0, x - pad), Y0 = Math.max(0, y - pad), X1 = Math.min(w - 1, x + bw - 1 + pad), Y1 = Math.min(h - 1, y + bh - 1 + pad);
+      for (let yy = Y0; yy <= Y1; yy++) for (let xx = X0; xx <= X1; xx++) {
+        const i = yy * w + xx, v = gray[i];
+        if (xx >= x && xx < x + bw && yy >= y && yy < y + bh) { if (fg[i]) { si += v; ni++; } } else if (!fg[i]) { so += v; no++; }
+      }
+      return ni && no ? si / ni - so / no : 0;
+    }
+    function thermalOk(gray, d) {
+      if (!o.polarity && !o.minContrast) return true;
+      const c = contrast(gray, d.box); d.contrast = c;
+      if (o.polarity === 1 && c <= 0) return false;
+      if (o.polarity === 2 && c >= 0) return false;
+      return Math.abs(c) >= o.minContrast;
+    }
+
     // gray: Uint8ClampedArray/Array of length w*h; t: video seconds
     function step(gray, t) {
+      allFrames++;
+      // Mobile: phone/WhatsApp videos often repeat each picture 2-3 times. Skip the copies,
+      // so a fast bat is followed between real pictures.
+      if (prevGray) {
+        let big = 0;   // a true copy has no pixel that really changed
+        for (let i = 0; i < N; i += 5) if (Math.abs(gray[i] - prevGray[i]) > 8 && ++big > 2) break;
+        if (big <= 2) { skipped++; return { dets: lastDets, newEvents: [] }; }
+      }
+      prevGray = Uint8Array.from(gray);
       frames++;
       for (let i = 0; i < N; i++) tmp[i] = gray[i];
       const src = Float32Array.from(tmp); gaussBlur(src);
@@ -559,7 +598,11 @@ a{color:#f0a070}
       morph(fg2, fg, false); morph(fg, fg2, true);   // open (erode, dilate)
       morph(fg2, fg, true); morph(fg, fg2, true);    // then dilate twice
       fg.set(fg2);
-      const dets = frames > 1 ? detect() : [];
+      if (o.nucGuard > 0 && frames > 1) {   // camera recalibration 'click': the whole picture jumps
+        let on = 0; for (let i = 0; i < N; i += 7) on += fg[i];
+        if (on * 7 > N * o.nucGuard / 100) { for (let i = 0; i < N; i++) mean[i] = blur[i]; lastDets = []; return { dets: [], newEvents: [] }; }
+      }
+      const dets = (frames > 1 ? detect() : []).filter((d) => thermalOk(gray, d));
 
       // pair tracks with detections: best (nearest predicted) first
       const tids = [...tracks.keys()], pairs = [];
@@ -575,17 +618,46 @@ a{color:#f0a070}
         usedT.add(tid); usedD.add(di);
         const tr = tracks.get(tid), d = dets[di], nc = d.c;
         const ns = side(nc);
-        if (frames > o.warmup && !tr.counted && ns !== 0 && tr.side !== 0 && ns !== tr.side && along(nc)) {
-          tr.counted = true;
+        const pts = tr.trail.length + 1, travel = Math.hypot(nc[0] - tr.start[0], nc[1] - tr.start[1]);
+        const body = Math.max(3, Math.sqrt(d.area));
+        let straight = 1;
+        if (pts >= 3) { let path = 0; const tt = tr.trail.concat([nc]); for (let q = 1; q < tt.length; q++) path += Math.hypot(tt[q][0] - tt[q - 1][0], tt[q][1] - tt[q - 1][1]); straight = path > 0 ? Math.hypot(nc[0] - tt[0][0], nc[1] - tt[0][1]) / path : 1; }
+        const fast = d.streak || travel > 4 * body;   // few pictures of a fast bat: judge it on distance alone
+        const checksOk = (fast || pts >= o.minPoints) && travel >= o.minTravel * Math.sqrt(o.minArea / 5.33)
+          && travel >= o.minLengths * body && (pts < 3 || straight * 100 >= o.minStraight);
+        tr.areas = (tr.areas || []).concat([d.area]).slice(-12); tr.streaks = (tr.streaks || 0) + (d.streak ? 1 : 0);
+        // PC rule: a perfectly level or upright, thin, never-changing shape is a camera streak, not a bat
+        const ang = Math.abs(Math.atan2(nc[1] - tr.start[1], nc[0] - tr.start[0]) * 180 / Math.PI) % 90;
+        const axis = Math.min(ang, 90 - ang) <= o.axisTol, amin = Math.min(...tr.areas), amax = Math.max(...tr.areas);
+        const artefact = o.axisTol > 0 && pts >= 3 && axis && tr.streaks >= pts - 1 && amax <= amin * 1.25;
+        const free = tr.lastCount == null || allFrames - tr.lastCount >= o.recountGap;   // every crossing counts (out and back in)
+        if (allFrames > o.warmup && free && ns !== 0 && tr.side !== 0 && ns !== tr.side && along(nc) && checksOk && !artefact) {
+          tr.counted = true; tr.lastCount = allFrames;
           const ev = { t: Math.round(t * 100) / 100, dir: ns === insideSign ? "IN" : "OUT", pos: nc, box: d.box, path: tr.trail.concat([nc]) };
           events.push(ev); newEvents.push(ev);
         }
+        if (tr.streakEv && tr.streakEv.dir === "?" && ns !== 0) tr.streakEv.dir = ns === insideSign ? "IN" : "OUT";   // direction from where the streak went next
         if (ns !== 0) tr.side = ns;
         const k = tr.missed + 1, vx = (nc[0] - tr.c[0]) / k, vy = (nc[1] - tr.c[1]) / k;
         tr.v = [0.6 * tr.v[0] + 0.4 * vx, 0.6 * tr.v[1] + 0.4 * vy];
         tr.c = nc; tr.missed = 0; tr.trail.push(nc); if (tr.trail.length > 12) tr.trail.shift();
       }
-      dets.forEach((d, di) => { if (!usedD.has(di)) tracks.set(nextId++, { c: d.c, side: side(d.c), missed: 0, counted: false, trail: [d.c], v: [0, 0] }); });
+      dets.forEach((d, di) => {
+        if (usedD.has(di)) return;
+        // Mobile: a bat so fast it is one streak across the line/box edge in a single picture
+        if (o.streaks && d.streak && allFrames > o.warmup) {
+          const [x, y, w2, h2] = d.box, ends = w2 >= h2 ? [[x, y + h2 / 2], [x + w2 - 1, y + h2 / 2]] : [[x + w2 / 2, y], [x + w2 / 2, y + h2 - 1]];
+          const s0 = side(ends[0]), s1 = side(ends[1]);
+          if (s0 !== 0 && s1 !== 0 && s0 !== s1 && (along(ends[0]) || along(ends[1]) || along(d.c))) {
+            const ev = { t: Math.round(t * 100) / 100, dir: "?", pos: d.c, box: d.box, path: ends, streak: true };
+            events.push(ev); newEvents.push(ev);
+            tracks.set(nextId++, { c: d.c, start: d.c, side: 0, missed: 0, counted: true, lastCount: allFrames, streakEv: ev, trail: [d.c], v: [0, 0] });
+            return;
+          }
+        }
+        tracks.set(nextId++, { c: d.c, start: d.c, side: side(d.c), missed: 0, counted: false, trail: [d.c], v: [0, 0] });
+      });
+      lastDets = dets;
       for (const tid of tids) if (!usedT.has(tid)) { const tr = tracks.get(tid); tr.missed++; if (tr.missed > o.maxMissed) tracks.delete(tid); }
       return { dets, newEvents };
     }
@@ -778,7 +850,8 @@ $("go").onclick = async () => {
   stopFlag = false; $("go").disabled = true; $("runBox").classList.remove("hide"); $("resCard").classList.add("hide");
   const PW = +$("pw").value, sc = PW / 960;
   const pw = Math.min(PW, video.videoWidth), ph = Math.round(video.videoHeight * pw / video.videoWidth), k = pw / video.videoWidth;
-  const opts = { sensitivity: +$("sens").value, minArea: Math.max(1, +$("minA").value * sc * sc), maxArea: +$("maxA").value * sc * sc, gate: +$("gate").value * sc, deadZone: 2 };
+  const opts = { sensitivity: +$("sens").value, minArea: Math.max(1, +$("minA").value * sc * sc), maxArea: +$("maxA").value * sc * sc, gate: +$("gate").value * sc, deadZone: 2,
+    polarity: +$("pol").value, minContrast: +$("mcon").value, minLengths: +$("mlen").value, minStraight: +$("mstr").value, streaks: $("strk").value === "1" };
   const lineP = { a: line.a.map((v) => v * k), b: line.b.map((v) => v * k), inside: line.inside.map((v) => v * k), box: line.box ? line.box.map((v) => v * k) : null };
   const counter = GHV.makeCounter(pw, ph, lineP, opts);
   lastProcW = pw;
@@ -864,7 +937,8 @@ async function finishVideo(events, duration) {
   $("rG").textContent = nG; $("rO").textContent = nO; $("rH").textContent = nH;
   $("rNote").innerHTML = `Sound used: ${src}. ${sf ? passes.length + " bat call group(s) heard." : ""}${stopFlag ? " Counting was stopped early." : ""}` +
     (lowRate ? `<div class="msg">This sound only goes up to ${Math.round(sf.rate / 2000)} kHz (normal trail-cam microphone). Ghost Hunter can tell a bat was <b>heard</b>, but it needs a bat detector recording (192 kHz or more, e.g. your Ghost Hunter monitor) to say <b>which species</b>. Add the detector WAV in step 3.</div>` : "");
-  $("evList").innerHTML = events.length ? events.map((e, i) => `<div class="ev" id="ev${i}"><img src="${e.img || ""}" alt=""><div style="flex:1"><b>#${i + 1} · ${e.dir}</b> <span class="mut">at ${Math.floor(e.t / 60)}:${(e.t % 60).toFixed(1).padStart(4, "0")}</span><br>${e.ghost != null ? verdictChip(e.ghost) : `<span class="chip n">${e.idNote}</span>`} ${e.heard ? '<span class="chip h">seen &amp; heard</span>' : '<span class="mut" style="font-size:12.5px">seen only</span>'}
+  $("evList").innerHTML = events.length ? events.map((e, i) => `<div class="ev" id="ev${i}"><img src="${e.img || ""}" alt=""><div style="flex:1"><b>#${i + 1} · <span class="evdir">${e.dir}</span></b> <span class="mut">at ${Math.floor(e.t / 60)}:${(e.t % 60).toFixed(1).padStart(4, "0")}</span><br>${e.ghost != null ? verdictChip(e.ghost) : `<span class="chip n">${e.idNote}</span>`} ${e.heard ? '<span class="chip h">seen &amp; heard</span>' : '<span class="mut" style="font-size:12.5px">seen only</span>'}
+      <div class="rv dirq" style="display:none"><button class="btn sec" data-dir="IN" data-i="${i}">IN</button><button class="btn sec" data-dir="OUT" data-i="${i}">OUT</button></div>
       <div class="rv"><button class="btn sec" data-play="${i}">▶ Replay</button><button class="btn sec ok" data-ok="${i}">✔ Bat</button><button class="btn sec no" data-no="${i}">✘ Not a bat</button></div></div></div>`).join("")
     : `<p class="mut">No bats crossed the ${line && line.box ? "box" : "line"}. Try a lower Sensitivity number, or check the ${line && line.box ? "box" : "line"} is where bats fly.</p>`;
   reviewEvents = events; reviewSrc = src; reviewZone = line && line.box ? { box: line.box } : line ? { a: line.a, b: line.b } : null;
@@ -879,18 +953,21 @@ let lastProcW = 0, reviewEvents = [], reviewSrc = "", reviewZone = null, reviewI
 const fmtT = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
 function refreshReview() {
   const ev = reviewEvents, kept = ev.filter((e) => e.ok !== false);
-  const nin = kept.filter((e) => e.dir === "IN").length, nout = kept.length - nin;
+  const nin = kept.filter((e) => e.dir === "IN").length, nout = kept.filter((e) => e.dir === "OUT").length, nq = kept.filter((e) => e.dir === "?").length;
   $("rIn").textContent = nin; $("rOut").textContent = nout; $("rNet").textContent = nout - nin;
   $("rG").textContent = kept.filter((e) => e.ghost != null && e.ghost >= 0.5).length;
   $("rO").textContent = kept.filter((e) => e.ghost != null && e.ghost < 0.5).length;
   $("rH").textContent = kept.filter((e) => e.heard).length;
   const yes = ev.filter((e) => e.ok === true).length, no = ev.filter((e) => e.ok === false).length, todo = ev.length - yes - no;
-  $("reviewNote").innerHTML = ev.length ? `Checked: <b>${yes}</b> real · <b>${no}</b> not a bat · <b>${todo}</b> to check. Tap <b>▶ Replay</b> to watch each one. Totals above leave out the ones marked not a bat.` : "";
+  $("reviewNote").innerHTML = (nq ? `<b>${nq}</b> fast bat(s) flashed across in a single picture, so the direction isn't known: replay them and tap <b>IN</b> or <b>OUT</b>.<br>` : "") + (ev.length ? `Checked: <b>${yes}</b> real · <b>${no}</b> not a bat · <b>${todo}</b> to check. Tap <b>▶ Replay</b> to watch each one. Totals above leave out the ones marked not a bat.` : "");
   ev.forEach((e, i) => {
     const row = $("ev" + i); if (!row) return;
     row.classList.toggle("rej", e.ok === false);
     row.querySelector("[data-ok]").classList.toggle("on", e.ok === true);
     row.querySelector("[data-no]").classList.toggle("on", e.ok === false);
+    const dirEl = row.querySelector(".evdir"); if (dirEl) dirEl.textContent = e.dir === "?" ? "IN or OUT?" : e.dir;
+    const dq = row.querySelector(".dirq"); if (dq) dq.style.display = e.streak ? "flex" : "none";
+    row.querySelectorAll("[data-dir]").forEach((b) => b.classList.toggle("on", b.dataset.dir === e.dir));
   });
   if (reviewIdx >= 0 && ev[reviewIdx]) { $("replayOk").classList.toggle("on", ev[reviewIdx].ok === true); $("replayNo").classList.toggle("on", ev[reviewIdx].ok === false); }
   const rows = [["bat", "time_s", "direction", "sound_verdict", "ghost_chance_pct", "seen_and_heard", "checked"]].concat(ev.map((e, i) => [i + 1, e.t, e.dir, e.ghost == null ? e.idNote : e.ghost >= 0.5 ? "ghost bat" : "other bat", e.ghost == null ? "" : Math.round(e.ghost * 100), e.heard ? "yes" : "no", e.ok === true ? "real bat" : e.ok === false ? "not a bat" : "not checked"]));
@@ -934,6 +1011,7 @@ $("evList").addEventListener("click", (ev) => {
   if (b.dataset.play != null) openReplay(+b.dataset.play);
   else if (b.dataset.ok != null) markEv(+b.dataset.ok, true);
   else if (b.dataset.no != null) markEv(+b.dataset.no, false);
+  else if (b.dataset.dir) { const e = reviewEvents[+b.dataset.i]; if (e) { e.dir = b.dataset.dir; refreshReview(); } }
 });
 setZoneMode("line");
 </script>

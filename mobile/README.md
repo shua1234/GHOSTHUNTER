@@ -15,7 +15,7 @@ Works on Android 7.0 or newer.
 - Or the **Actions** tab → **Build Android app** → the latest run with a green tick → under **Artifacts**, download **Ghosthunter-Mobile-APK**. It comes as a zip; unzip it to get the `.apk`.
 
 ## Updating the app (for Josh)
-1. Replace `app/src/main/assets/index.html` with the new version of the app.
+1. `app/src/main/assets/index.html` is Ghost Hunter 5.1 plus phone-only additions (box zone, replay and confirm, fast-streak counting, skipping copied frames, thermal and flight checks). Phone fixes that don't touch the page live in `app/src/main/assets/mobile_fixes.js`. If you swap in a new desktop web version, those additions need adding again.
 2. In `app/build.gradle`, raise `versionCode` (for example 5101 → 5201) and set `versionName` (for example "5.2").
 3. Push to GitHub. The **Build Android app** workflow builds the new APK automatically.
 
