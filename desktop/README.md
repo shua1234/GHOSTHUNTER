@@ -7,7 +7,13 @@ Bat counter and ghost bat ID for trail-cam video and bat detector recordings. Ev
 - `GhostHunter.exe` opens the app in its own window.
 - The sound judge, video counter and everything else are the same as 5.0.
 
-## Install on Windows
+## Full desktop app (recommended)
+1. Go to **[Releases → v5.1](https://github.com/shua1234/GHOSTHUNTER/releases/tag/v5.1)** and download **`Ghost-Hunter-v5.1-Windows.exe`** (about 98 MB).
+2. Save it somewhere it will stay (for example Documents) and double-click it.
+3. The first time, Windows may say "Windows protected your PC" because the exe isn't signed. Click **More info**, then **Run anyway**.
+4. For a desktop icon, right-click the exe → **Send to → Desktop (create shortcut)**.
+
+## Light version (opens the web app in its own window)
 1. On this repo's main page, tap **Code → Download ZIP**, then unzip it somewhere it will stay (for example Documents).
 2. Open the `desktop` folder and double-click **GhostHunter.exe**. It opens Ghost Hunter in its own window, using Edge or Chrome.
 3. The first time, Windows may say "Windows protected your PC" because the exe isn't signed. Click **More info**, then **Run anyway**.

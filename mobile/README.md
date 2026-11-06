@@ -11,8 +11,8 @@ Works on Android 7.0 or newer.
 4. Open **Ghosthunter** from your app list.
 
 ### Where to get the APK
-- **Actions** tab on this repo → **Build Android app** → the latest run with a green tick → under **Artifacts**, download **Ghosthunter-Mobile-APK**. It comes as a zip; unzip it to get the `.apk`.
-- Or from **Releases** on the repo's main page, once a release has been published.
+- **[Releases → v5.1](https://github.com/shua1234/GHOSTHUNTER/releases/tag/v5.1)**: tap **`Ghosthunter-Mobile-v5.1.apk`**.
+- Or the **Actions** tab → **Build Android app** → the latest run with a green tick → under **Artifacts**, download **Ghosthunter-Mobile-APK**. It comes as a zip; unzip it to get the `.apk`.
 
 ## Updating the app (for Josh)
 1. Replace `app/src/main/assets/index.html` with the new version of the app.
