@@ -1,0 +1,55 @@
+# Puts the moon and tree icon (desktop/ghost_hunter.ico) inside both Windows .exe files:
+# the full app on the v5.1 release, and desktop/GhostHunter.exe in this repo.
+name: Set Windows icon
+on:
+  push:
+    branches: [main]
+    paths: ["desktop/ghost_hunter.ico", ".github/workflows/set-windows-icon.yml", ".github/scripts/set_icon.py"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  icon:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Get the tools
+        shell: bash
+        run: |
+          python -m pip install pefile==2024.8.26
+          curl -sSL -o rcedit.exe https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe
+      - name: Get the Windows app from the release
+        shell: bash
+        run: gh release download v5.1 -p "Ghost-Hunter-v5.1-Windows.exe" --clobber
+      - name: Set the icon
+        shell: bash
+        run: |
+          python .github/scripts/set_icon.py Ghost-Hunter-v5.1-Windows.exe desktop/ghost_hunter.ico ./rcedit.exe
+          python .github/scripts/set_icon.py desktop/GhostHunter.exe desktop/ghost_hunter.ico ./rcedit.exe
+      - name: Check the app still starts
+        shell: pwsh
+        run: |
+          # A working one-file app starts a second copy of itself to run the program.
+          # If the program data were damaged it would stop at an error box with only one copy.
+          $p = Start-Process -FilePath ".\Ghost-Hunter-v5.1-Windows.exe" -PassThru
+          Start-Sleep -Seconds 40
+          $n = @(Get-Process -Name "Ghost-Hunter-v5.1-Windows" -ErrorAction SilentlyContinue).Count
+          Write-Host "Copies running: $n"
+          Get-Process -Name "Ghost-Hunter-v5.1-Windows" -ErrorAction SilentlyContinue | Stop-Process -Force
+          if ($n -lt 2) { Write-Error "The app did not start properly"; exit 1 }
+          Write-Host "App started properly"
+      - name: Put the new exe on the release
+        shell: bash
+        run: gh release upload v5.1 Ghost-Hunter-v5.1-Windows.exe --clobber
+      - name: Save the launcher with its new icon
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add desktop/GhostHunter.exe
+          git diff --cached --quiet || git commit -m "Set the moon and tree icon on GhostHunter.exe" && git push
