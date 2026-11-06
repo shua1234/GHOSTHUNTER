@@ -5,6 +5,7 @@ import android.content.ClipData;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -41,6 +42,8 @@ public class MainActivity extends Activity {
         ws.setAllowFileAccess(true);
         ws.setMediaPlaybackRequiresUserGesture(false);
         ws.setBuiltInZoomControls(false);
+        // "Share report" button: hand the text report to email / messages / Drive.
+        web.addJavascriptInterface(new ShareBridge(), "GhostHunterAndroid");
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -180,6 +183,22 @@ public class MainActivity extends Activity {
             web.goBack();
         } else {
             super.onBackPressed();
+        }
+    }
+
+    private class ShareBridge {
+        @JavascriptInterface
+        public void share(final String title, final String text) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Intent send = new Intent(Intent.ACTION_SEND);
+                    send.setType("text/plain");
+                    send.putExtra(Intent.EXTRA_SUBJECT, title);
+                    send.putExtra(Intent.EXTRA_TEXT, text);
+                    startActivity(Intent.createChooser(send, title));
+                }
+            });
         }
     }
 }
