@@ -65,6 +65,7 @@ details summary{cursor:pointer;color:var(--mut);font-size:14px;padding:4px 0}
 textarea{width:100%;height:120px;background:#0f1317;color:#cfd8df;border:1px solid var(--line);border-radius:8px;font:12px ui-monospace,Consolas,monospace}
 ul{padding-left:20px;margin:6px 0}li{margin:4px 0}
 a{color:#8fe6b4}
+.aniSel{width:100%;font-size:15px;padding:9px;background:var(--card2);color:var(--ink);border:1px solid var(--line);border-radius:9px}
 .rv.big3 button{padding:14px 6px;font-size:16px;font-weight:700}
 #zoneWrap{position:relative;overflow:hidden;border-radius:10px;background:#000;touch-action:none}
 #zoneWrap canvas.view{border-radius:0;transform-origin:0 0}
@@ -78,7 +79,7 @@ a{color:#8fe6b4}
 <body>
 <header>
   <div class="batgif batlogo" role="img" aria-label="Ghost Hunter bat"></div>
-  <div><h1>Ghost Hunter</h1><div class="tag">Bat Counter</div><div class="sub">Ghost bat ID · mobile v5.1 (build 5119)</div></div>
+  <div><h1>Ghost Hunter</h1><div class="tag">Bat Counter</div><div class="sub">Ghost bat ID · mobile v5.1 (build 5120)</div></div>
   <div class="lock" id="lock">🔒 Private</div>
 </header>
 <nav>
@@ -213,6 +214,18 @@ a{color:#8fe6b4}
     <button class="btn sec" id="copyV" style="margin-top:10px">Copy results (paste into Excel / notes)</button>
     <textarea id="csvV" class="hide" readonly></textarea>
   </div>
+  <div class="card hide" id="aniCard">
+    <h2>🦘 Other animals</h2>
+    <p class="mut" id="aniNote" style="margin-top:0"></p>
+    <div id="aniPlay" style="display:none;margin-bottom:10px"><b id="aniTitle"></b><video id="aniVid" playsinline muted controls style="width:100%;border-radius:10px;background:#000;display:block;margin-top:6px"></video></div>
+    <div id="aniList"></div>
+    <details style="margin-top:10px"><summary>Animal labels file (JSON)</summary>
+      <p class="mut" id="aniLab"></p>
+      <div class="rv"><button class="btn sec" id="aniExport">💾 Export animal labels</button><button class="btn sec" id="aniImport">📂 Import</button></div>
+      <input type="file" id="aniFile" accept=".json,application/json" class="hide">
+      <div id="aniMsg"></div>
+    </details>
+  </div>
 </section>
 
 <!-- ================= REPORT ================= -->
@@ -230,6 +243,7 @@ a{color:#8fe6b4}
     <div id="repBody"></div>
     <div class="set"><span>Group counts by</span><select id="repBin"><option value="0" selected>Auto</option><option value="10">10 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option><option value="600">10 minutes</option><option value="900">15 minutes</option></select></div>
     <div id="repChart"></div>
+    <div id="repAnimals"></div>
     <div id="repTiming"></div>
     <h3>Accuracy check against your own count</h3>
     <div class="set">
@@ -701,6 +715,73 @@ async function fastFrames(file, onFrame, shouldStop, onTotal) {
     const fg = new Uint8Array(N), fg2 = new Uint8Array(N), lab = new Int32Array(N);
     let frames = 0, nextId = 0, tracks = new Map();
     const events = [];
+    // ---- other animals (quolls, wallabies, cattle, snakes...): big or slow things that stay a while ----
+    const animalMin = Math.max(o.minArea * 4, 300 * (w / 960) ** 2);
+    let blobs = [], aTracks = [];
+    const animalSegs = [];
+    function grayCrop(gray, box) {   // a small picture of the animal (longest side 96 px)
+      const [bx, by, bw, bh] = box, pad = Math.round(Math.max(bw, bh) * 0.35) + 4;
+      const x0 = Math.max(0, bx - pad), y0 = Math.max(0, by - pad), x1 = Math.min(w, bx + bw + pad), y1 = Math.min(h, by + bh + pad);
+      const cw = x1 - x0, ch = y1 - y0, k = Math.min(1, 96 / Math.max(cw, ch)), ow = Math.max(1, Math.round(cw * k)), oh = Math.max(1, Math.round(ch * k));
+      const data = new Uint8Array(ow * oh);
+      for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) data[y * ow + x] = gray[(y0 + Math.floor(y / k)) * w + x0 + Math.floor(x / k)];
+      return { w: ow, h: oh, data };
+    }
+    function animalEnd(tr) {
+      const ar = tr.areas.slice().sort((a, b) => a - b), body = Math.sqrt(ar[ar.length >> 1]);
+      const dur = tr.t1 - tr.t0, disp = Math.hypot(tr.ext[2] - tr.ext[0], tr.ext[3] - tr.ext[1]);
+      const speed = tr.path / Math.max(dur, 0.01) / body;   // body lengths per second (bats: hundreds)
+      if (tr.n >= 12 && dur >= 0.8 && disp >= 1.5 * body && speed < 12) {
+        const asp = tr.asp.slice().sort((a, b) => a - b), net = Math.hypot(tr.pts[tr.pts.length - 1][0] - tr.pts[0][0], (tr.pts[tr.pts.length - 1][1] - tr.pts[0][1]) * h / w) * w;
+        const move = { body_lengths_per_s: +speed.toFixed(2), straightness: +(tr.path > 0 ? Math.min(1, net / tr.path) : 0).toFixed(3),
+          still_pct: +(100 * tr.still / Math.max(1, tr.steps)).toFixed(1), seen_pct: +(100 * tr.n / Math.max(1, tr.n + tr.gaps)).toFixed(1),
+          up_down_pct: +(100 * tr.sy / Math.max(1e-6, tr.sx + tr.sy)).toFixed(1), width_to_height: +asp[asp.length >> 1].toFixed(2),
+          size_pct: +(100 * body / w).toFixed(2), seconds: +dur.toFixed(2), path: tr.pts };
+        animalSegs.push({ t0: tr.t0, t1: tr.t1, box: tr.box.slice(), best: tr.best, body, move, c: [(tr.ext[0] + tr.ext[2]) / 2, (tr.ext[1] + tr.ext[3]) / 2] });
+      }
+    }
+    function animalStep(gray, t) {
+      const gate = 0.12 * w, maxMiss = Math.max(10, Math.round(1.5 / gapT)), pairs = [];
+      aTracks.forEach((tr, ti) => blobs.forEach((b, bi) => { const d = Math.hypot(tr.c[0] - b.c[0], tr.c[1] - b.c[1]); if (d <= gate + Math.sqrt(b.area)) pairs.push([d, ti, bi]); }));
+      pairs.sort((a, b) => a[0] - b[0]);
+      const ut = new Set(), ub = new Set();
+      for (const [, ti, bi] of pairs) {
+        if (ut.has(ti) || ub.has(bi)) continue; ut.add(ti); ub.add(bi);
+        const tr = aTracks[ti], b = blobs[bi], dx = b.c[0] - tr.c[0], dy = b.c[1] - tr.c[1], stepD = Math.hypot(dx, dy);
+        tr.sx += Math.abs(dx); tr.sy += Math.abs(dy); tr.steps++; if (stepD < 0.04 * Math.sqrt(b.area)) tr.still++;
+        tr.asp.push(b.box[2] / Math.max(1, b.box[3])); if (tr.asp.length > 300) tr.asp.shift();
+        if (tr.n % 3 === 0 && tr.pts.length < 80) tr.pts.push([+(b.c[0] / w).toFixed(3), +(b.c[1] / h).toFixed(3), +t.toFixed(2)]);
+        tr.path += stepD; tr.c = b.c; tr.t1 = t; tr.n++; tr.missed = 0; tr.areas.push(b.area); if (tr.areas.length > 300) tr.areas.shift();
+        tr.ext = [Math.min(tr.ext[0], b.c[0]), Math.min(tr.ext[1], b.c[1]), Math.max(tr.ext[2], b.c[0]), Math.max(tr.ext[3], b.c[1])];
+        const bx1 = Math.max(tr.box[0] + tr.box[2], b.box[0] + b.box[2]), by1 = Math.max(tr.box[1] + tr.box[3], b.box[1] + b.box[3]);
+        tr.box[0] = Math.min(tr.box[0], b.box[0]); tr.box[1] = Math.min(tr.box[1], b.box[1]); tr.box[2] = bx1 - tr.box[0]; tr.box[3] = by1 - tr.box[1];
+        if (b.area > tr.best.area && tr.n % 3 === 0) tr.best = { t, area: b.area, box: b.box, crop: grayCrop(gray, b.box) };
+      }
+      aTracks = aTracks.filter((tr, ti) => { if (ut.has(ti)) return true; tr.gaps = (tr.gaps || 0) + 1; if (++tr.missed > maxMiss) { tr.gaps -= tr.missed; animalEnd(tr); return false; } return true; });
+      blobs.forEach((b, bi) => { if (!ub.has(bi) && aTracks.length < 40) aTracks.push({ c: b.c, t0: t, t1: t, n: 1, missed: 0, gaps: 0, path: 0, areas: [b.area], sx: 0, sy: 0, steps: 0, still: 0, asp: [b.box[2] / Math.max(1, b.box[3])], pts: [[+(b.c[0] / w).toFixed(3), +(b.c[1] / h).toFixed(3), +t.toFixed(2)]], ext: [b.c[0], b.c[1], b.c[0], b.c[1]], box: b.box.slice(), best: { t, area: b.area, box: b.box, crop: grayCrop(gray, b.box) } }); });
+    }
+    function finish() {   // after the last frame: group the animal sightings into visits, and spot "bats" that were the animal
+      aTracks.forEach(animalEnd); aTracks = [];
+      animalSegs.sort((a, b) => a.t0 - b.t0);
+      const visits = [];
+      for (const sg of animalSegs) {
+        const v = visits.find((q) => sg.t0 - q.t1 < 5 && Math.hypot(sg.c[0] - q.c[0], sg.c[1] - q.c[1]) < 0.3 * w);
+        if (!v) { visits.push({ t0: sg.t0, t1: sg.t1, box: sg.box.slice(), c: sg.c, best: sg.best, body: sg.body, moves: [sg.move] }); continue; }
+        v.moves.push(sg.move);
+        v.t1 = Math.max(v.t1, sg.t1);
+        const x1 = Math.max(v.box[0] + v.box[2], sg.box[0] + sg.box[2]), y1 = Math.max(v.box[1] + v.box[3], sg.box[1] + sg.box[3]);
+        v.box[0] = Math.min(v.box[0], sg.box[0]); v.box[1] = Math.min(v.box[1], sg.box[1]); v.box[2] = x1 - v.box[0]; v.box[3] = y1 - v.box[1];
+        if (sg.best.area > v.best.area) { v.best = sg.best; v.c = sg.c; } v.body = Math.max(v.body, sg.body);
+      }
+      visits.forEach((v, vi) => {
+        const pad = v.body;
+        for (const ev of events) {
+          const [x, y] = ev.pos;
+          if (ev.t >= v.t0 - 0.3 && ev.t <= v.t1 + 0.3 && x >= v.box[0] - pad && x <= v.box[0] + v.box[2] + pad && y >= v.box[1] - pad && y <= v.box[1] + v.box[3] + pad) ev.animal = vi;
+        }
+      });
+      return visits;
+    }
     let insideSign, side, along;
     if (line.poly) {   // PC-style shape zone: tap points around the cave entrance. Into it = IN, out = OUT.
       const P = line.poly, n = P.length;
@@ -752,7 +833,7 @@ async function fastFrames(file, onFrame, shouldStop, onTotal) {
     }
 
     function detect() {
-      lab.fill(0);
+      lab.fill(0); blobs = [];
       const dets = []; let id = 0; const stack = [];
       for (let s = 0; s < N; s++) {
         if (!fg[s] || lab[s]) continue;
@@ -772,6 +853,7 @@ async function fastFrames(file, onFrame, shouldStop, onTotal) {
         const streak = long >= 3 * short && long >= 6 * Math.sqrt(o.minArea);   // a fast bat blurred into a streak
         const cx = x0 + (bw >> 1), cy = y0 + (bh >> 1), E = o.edges;   // PC: ignore left / right / top / bottom edge of picture (%)
         if (cx < w * E[0] / 100 || cx > w * (1 - E[1] / 100) || cy < h * E[2] / 100 || cy > h * (1 - E[3] / 100)) continue;
+        if (area >= animalMin) blobs.push({ c: [cx, cy], box: [x0, y0, bw, bh], area });   // anything big enough to be another animal
         if (o.thin > 0 && long >= o.thin * short && area >= 0.6 * bw * bh) continue;   // PC: thin solid line shapes (wires, scratches)
         if (area >= o.minArea && (area <= o.maxArea || (streak && area <= o.maxArea * 12)))
           dets.push({ c: [x0 + (bw >> 1), y0 + (bh >> 1)], box: [x0, y0, bw, bh], area, streak });
@@ -945,11 +1027,12 @@ async function fastFrames(file, onFrame, shouldStop, onTotal) {
         tracks.set(nextId++, { c: d.c, start: d.c, t0: t, side: side(d.c), missed: 0, counted: false, trail: [d.c], v: [0, 0] });
       });
       lastDets = dets;
+      if (allFrames > o.warmup) animalStep(gray, t);
       for (const tid of tids) if (!usedT.has(tid)) { const tr = tracks.get(tid); tr.missed++; if (tr.missed > o.maxMissed) tracks.delete(tid); }
       return { dets, newEvents };
     }
 
-    return { step, events, tracks: () => tracks, frames: () => frames,
+    return { step, finish, events, tracks: () => tracks, frames: () => frames,
       counts: () => ({ in: events.filter((e) => e.dir === "IN").length, out: events.filter((e) => e.dir === "OUT").length }) };
   }
 
@@ -1294,10 +1377,14 @@ async function countOne() {
   } finally { video.pause(); }
   return await doneCounting();
   async function doneCounting() {
+  const visits = counter.finish ? counter.finish() : [];
+  const animals = visits.map((v, i) => ({ i, t0: v.t0, t1: v.t1, box: v.box, img: grayToURL(v.best.crop), best: v.best.box, bestT: v.best.t,
+    sizePct: 100 * v.body / pw, dur: v.t1 - v.t0, moves: v.moves, tag: null }));
+  counter.events.forEach((e) => { if (e.animal != null) { e.ok = false; e.autoAnimal = true; } });
   $("vstat").textContent = "Listening to the sound for each bat…"; await yieldUI();
   const vz = (q) => [q[0] * video.videoWidth / setupCv.width, q[1] * video.videoHeight / setupCv.height];
   const zone = line.poly ? { poly: line.poly.map(vz) } : line.box ? { box: [...vz(line.box.slice(0, 2)), ...vz(line.box.slice(2))] } : { a: vz(line.a), b: vz(line.b) };
-  return await finishVideo(counter.events, video.duration, { procW: pw, zone });
+  return await finishVideo(counter.events, video.duration, { procW: pw, zone, animals });
   }
 }
 
@@ -1334,7 +1421,7 @@ async function finishVideo(events, duration, extra) {
   }
   const note = `Sound used: ${src}. ${sf ? passes.length + " bat call group(s) heard." : ""}${stopFlag ? " Counting was stopped early." : ""}` +
     (lowRate ? `<div class="msg">This sound only goes up to ${Math.round(sf.rate / 2000)} kHz (normal trail-cam microphone). Ghost Hunter can tell a bat was <b>heard</b>, but it needs a bat detector recording (192 kHz or more, e.g. your Ghost Hunter monitor) to say <b>which species</b>. Add the detector WAV in step 3.</div>` : "");
-  return { file: vidFile, url: vidURL, events, src, note, dur: duration, procW: extra.procW, zone: extra.zone, hid: "h" + Date.now() + Math.random().toString(36).slice(2, 6) };
+  return { file: vidFile, url: vidURL, events, src, note, dur: duration, procW: extra.procW, zone: extra.zone, animals: extra.animals || [], hid: "h" + Date.now() + Math.random().toString(36).slice(2, 6) };
 }
 function showRun(i) {
   const run = runs[i]; if (!run) return;
@@ -1344,9 +1431,10 @@ function showRun(i) {
   $("evList").innerHTML = events.length ? events.map((e, i) => `<div class="ev" id="ev${i}"><img src="${e.img || ""}" alt=""><div style="flex:1"><b>#${i + 1} · <span class="evdir">${e.dir}</span></b> <span class="mut">at ${Math.floor(e.t / 60)}:${(e.t % 60).toFixed(1).padStart(4, "0")}</span><br>${e.ghost != null ? verdictChip(e.ghost) : `<span class="chip n">${e.idNote}</span>`} ${e.heard ? '<span class="chip h">seen &amp; heard</span>' : '<span class="mut" style="font-size:12.5px">seen only</span>'}
       <div class="rv dirq" style="display:none"><button class="btn sec" data-dir="IN" data-i="${i}">IN</button><button class="btn sec" data-dir="OUT" data-i="${i}">OUT</button></div>
       <div class="rv"><button class="btn sec" data-play="${i}">▶ Replay</button><button class="btn sec ok" data-ok="${i}">✔ Bat</button><button class="btn sec no" data-no="${i}">✘ Not a bat</button></div>
-      <div class="rv"><button class="btn sec gh" data-sp="ghost" data-i="${i}">👻 Ghost bat</button><button class="btn sec ot" data-sp="other" data-i="${i}">Other bat</button></div><div class="spLine" style="margin-top:4px"></div></div></div>`).join("")
+      <div class="rv"><button class="btn sec gh" data-sp="ghost" data-i="${i}">👻 Ghost bat</button><button class="btn sec ot" data-sp="other" data-i="${i}">Other bat</button><button class="btn sec" data-insect="${i}">🦟 Insect</button></div><div class="spLine" style="margin-top:4px"></div></div></div>`).join("")
     : `<p class="mut">No bats crossed the ${line && (line.box || line.poly) ? "zone" : "line"}. Try a lower Sensitivity number, or check the ${line && (line.box || line.poly) ? "zone" : "line"} is where bats fly.</p>`;
   reviewEvents = events; reviewSrc = run.src; reviewZone = run.zone; reviewIdx = -1;
+  renderAnimals();
   $("replayCard").style.display = "none"; refreshReview();
   $("csvV").classList.add("hide"); $("copyV").textContent = "Copy results (paste into Excel / notes)";
   ["resCard", "checkCard"].forEach((id) => $(id).classList.remove("hide")); ["checkEmpty", "reportEmpty"].forEach((id) => $(id).classList.add("hide"));
@@ -1376,7 +1464,10 @@ function refreshReview() {
     const dq = row.querySelector(".dirq"); if (dq) dq.style.display = e.streak ? "flex" : "none";
     row.querySelectorAll("[data-dir]").forEach((b) => b.classList.toggle("on", b.dataset.dir === e.dir));
     row.querySelectorAll("[data-sp]").forEach((b) => b.classList.toggle("on", e.tag === b.dataset.sp));
-    const sl = row.querySelector(".spLine"); if (sl) sl.innerHTML = speciesChip(e.final);
+    const ib = row.querySelector("[data-insect]"); if (ib) ib.classList.toggle("on", e.notBat === "insect");
+    const sl = row.querySelector(".spLine");
+    if (sl) sl.innerHTML = e.notBat === "insect" ? `<span class="mut">🦟 Insect: not counted.</span>`
+      : e.animal != null && e.ok === false && e.autoAnimal ? `<span class="mut">🦘 Moved with animal visit #${e.animal + 1}, so it isn't counted. Tap ✔ Bat if it really was a bat.</span>` : speciesChip(e.final);
   });
   if (reviewIdx >= 0 && ev[reviewIdx]) { $("replayGhost").classList.toggle("on", ev[reviewIdx].tag === "ghost"); $("replayOther").classList.toggle("on", ev[reviewIdx].tag === "other"); }
   if (reviewIdx >= 0 && ev[reviewIdx]) { $("replayOk").classList.toggle("on", ev[reviewIdx].ok === true && !ev[reviewIdx].tag); $("replayNo").classList.toggle("on", ev[reviewIdx].ok === false);
@@ -1387,6 +1478,9 @@ function refreshReview() {
   const f2 = (x) => x == null ? "" : (+x).toFixed(2);
   const rows = [["bat", "time_s", "clock", "direction", "species", "species_from", "species_confidence_pct", "sound_verdict", "ghost_chance_pct", "seen_and_heard", "checked", "size", "speed", "wingbeat"]].concat(ev.map((e, i) => [i + 1, e.t, clockOf(e.t), e.dir, spName(e.final.sp), e.final.from, e.final.conf == null ? "" : Math.round(e.final.conf * 100), e.ghost == null ? e.idNote : e.ghost >= 0.5 ? "ghost bat" : "other bat", e.ghost == null ? "" : Math.round(e.ghost * 100), e.heard ? "yes" : "no", e.ok === true ? "real bat" : e.ok === false ? "not a bat" : "not checked", f2(e.feat && e.feat.size), f2(e.feat && e.feat.speed), f2(e.feat && e.feat.flap)]));
   rows.unshift(["# Ghost Hunter: Bat Counter mobile v5.1", vidFile ? vidFile.name : "", `IN ${nin}`, `OUT ${nout}`, `checked real ${yes}; not a bat ${no}; not checked ${todo}`, "sound: " + reviewSrc.replace(/,/g, ";")]);
+  const A = (curRun && curRun.animals) || [];
+  if (A.length) { rows.push([]); rows.push(["animal_visit", "start_s", "end_s", "clock", "group", "animal", "size_pct_of_width"]);
+    A.forEach((a) => rows.push([a.i + 1, a.t0.toFixed(2), a.t1.toFixed(2), clockOf(a.t0), animalGroup(a.tag), animalName(a.tag) || "not identified (" + guessSize(a) + ")", a.sizePct.toFixed(1)])); }
   $("csvV").value = rows.map((r) => r.join(",")).join("\n");
   renderReport();
 }
@@ -1420,7 +1514,7 @@ $("replayAgain").onclick = () => openReplay(reviewIdx);
 $("replayPrev").onclick = () => openReplay(Math.max(0, reviewIdx - 1));
 $("replayNext").onclick = () => openReplay(Math.min(reviewEvents.length - 1, reviewIdx + 1));
 $("replayClose").onclick = () => { $("replayVid").pause(); $("replayCard").style.display = "none"; };
-const markEv = (i, ok) => { const e = reviewEvents[i]; if (!e) return; e.ok = e.ok === ok ? undefined : ok; refreshReview(); };
+const markEv = (i, ok) => { const e = reviewEvents[i]; if (!e) return; e.ok = e.ok === ok ? undefined : ok; e.autoAnimal = false; if (e.notBat) { e.notBat = null; dropAnimalLabel(curRun && curRun.hid + "#b" + i); } refreshReview(); };
 const unchecked = (e) => e.ok === undefined && !e.tag;
 function nextBat() {
   const n = reviewEvents.length;
@@ -1454,6 +1548,7 @@ $("evList").addEventListener("click", (ev) => {
   else if (b.dataset.no != null) markEv(+b.dataset.no, false);
   else if (b.dataset.dir) { const e = reviewEvents[+b.dataset.i]; if (e) { e.dir = b.dataset.dir; refreshReview(); } }
   else if (b.dataset.sp) tagSpecies(+b.dataset.i, b.dataset.sp);
+  else if (b.dataset.insect != null) tagInsect(+b.dataset.insect);
 });
 $("replayGhost").onclick = () => { tagSpecies(reviewIdx, "ghost"); if (reviewEvents[reviewIdx] && reviewEvents[reviewIdx].tag) nextBat(); };
 $("replayOther").onclick = () => { tagSpecies(reviewIdx, "other"); if (reviewEvents[reviewIdx] && reviewEvents[reviewIdx].tag) nextBat(); };
@@ -1656,11 +1751,14 @@ function renderReport() {
     IV.filter((r) => r[1] || r[2]).map((r) => `<tr><td>${ivLab(r[0])}</td><td style="text-align:right">${r[1]}</td><td style="text-align:right">${r[2]}</td><td style="text-align:right">${r[1] - r[2]}</td><td>${r[3]}</td></tr>`).join("") +
     (IV.some((r) => r[1] || r[2]) ? "" : `<tr><td colspan="5" class="mut">No bats in any interval</td></tr>`) + `</table>`;
   $("repTiming").innerHTML = timing;
+  $("repAnimals").innerHTML = animalReportHTML();
   const txt = [`GHOST HUNTER MOBILE v5.1 REPORT`, vidFile ? vidFile.name : "", st ? "Started: " + st.toLocaleString() : "", `Length: ${fmtT(dur)}`, ""].concat(rowsT.map((r) => `${r[0].replace("👻 ", "")}: ${r[1]}`));
   if (outs.length) txt.push("", "First out: " + (clockOf(outs[0]) || fmtT(outs[0])), "Last out: " + (clockOf(outs[outs.length - 1]) || fmtT(outs[outs.length - 1])));
   txt.push("", "By interval (IN / OUT / Net):"); IV.filter((r) => r[1] || r[2]).forEach((r) => txt.push(`${ivLab(r[0])}  ${r[1]} / ${r[2]} / ${r[1] - r[2]}`));
   if ($("cave").value) txt.splice(1, 0, "Cave: " + $("cave").value);
   if ($("accRes").dataset.txt) txt.push("", $("accRes").dataset.txt);
+  const AN = (curRun && curRun.animals) || [];
+  if (AN.length) { txt.push("", "Other animals:"); AN.forEach((a) => txt.push(`Visit ${a.i + 1} ${clockOf(a.t0) || fmtT(a.t0)}–${clockOf(a.t1) || fmtT(a.t1)} ${animalName(a.tag) || "not identified (" + guessSize(a) + ")"}`)); }
   txt.push("", "Bat list:"); kept.forEach((e) => txt.push(`#${ev.indexOf(e) + 1} ${clockOf(e.t) || fmtT(e.t)} ${e.dir} ${spName(e.final.sp)} (${e.final.from})`));
   $("repText").value = txt.filter((x, i) => x !== "" || i > 3).join("\n");
   $("repCard").classList.remove("hide");
@@ -1717,6 +1815,109 @@ function progressNote(text) {
   const n = Date.now(); if (n - lastProg < 2000) return; lastProg = n;
   try { A.progress(text); } catch (_) {}
 }
+
+// ---------- other animals: quolls, kangaroos, cattle, snakes, insects... ----------
+const ANIMAL_GROUPS = [["Marsupial", [["quoll", "Northern quoll"], ["roo", "Kangaroo / wallaby"], ["marsupial", "Other marsupial"]]],
+  ["Mammal", [["cattle", "Buffalo / cow"], ["mammal", "Other mammal"]]],
+  ["Insect", [["insect", "Insect"]]],
+  ["Other", [["snake", "Snake"], ["bird", "Bird"], ["other", "Other"]]],
+  ["", [["none", "Not an animal"]]]];
+const ANIMALS = ANIMAL_GROUPS.flatMap(([g, L]) => L.map(([k, n]) => [k, n, g]));
+const animalName = (k) => (ANIMALS.find((a) => a[0] === k) || [, ""])[1];
+const animalGroup = (k) => (ANIMALS.find((a) => a[0] === k) || [, , ""])[2];
+const animalSelect = (i, tag) => `<select class="aniSel" data-ani="${i}"><option value="">— What was it? —</option>` +
+  ANIMAL_GROUPS.map(([g, L]) => (g ? `<optgroup label="${g}">` : "") + L.map(([k, n]) => `<option value="${k}"${tag === k ? " selected" : ""}>${n}</option>`).join("") + (g ? "</optgroup>" : "")).join("") + `</select>`;
+const guessSize = (a) => a.sizePct >= 8 ? "large animal" : "small animal";
+const AKEY = "ghm_animals_v1";
+const loadAnimalLabels = () => { try { return JSON.parse(localStorage.getItem(AKEY) || "[]"); } catch (_) { return []; } };
+const saveAnimalLabels = (L) => { try { localStorage.setItem(AKEY, JSON.stringify(L.slice(-3000))); } catch (_) {} };
+function grayToURL(c) {
+  if (!c) return "";
+  const cv = document.createElement("canvas"); cv.width = c.w; cv.height = c.h; const g = cv.getContext("2d"), im = g.createImageData(c.w, c.h);
+  for (let i = 0; i < c.data.length; i++) { const v = c.data[i]; im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255; }
+  g.putImageData(im, 0, 0); return cv.toDataURL("image/jpeg", 0.85);
+}
+function animalCounts(A) { const o = {}; A.forEach((a) => { const k = a.tag || "unknown"; if (k !== "none") o[k] = (o[k] || 0) + 1; }); return o; }
+function putAnimalLabel(id, rec) { const L = loadAnimalLabels().filter((x) => x.id !== id); if (rec) L.push(Object.assign({ id }, rec)); saveAnimalLabels(L); }
+function dropAnimalLabel(id) { if (id) putAnimalLabel(id, null); }
+function tagAnimal(i, tag) {
+  const a = curRun && curRun.animals[i]; if (!a) return;
+  a.tag = tag === "__clear" ? null : tag;
+  const id = curRun.hid + "#a" + i;
+  if (!a.tag) dropAnimalLabel(id);
+  else putAnimalLabel(id, { label: a.tag, name: animalName(a.tag), group: animalGroup(a.tag), video: curRun.file.name, cave: $("cave").value || "", t0: +a.t0.toFixed(2), t1: +a.t1.toFixed(2),
+    clock: clockOf(a.t0) || "", size_pct: +a.sizePct.toFixed(2), seconds: +a.dur.toFixed(2), box: a.best, picture: a.img,
+    movement: a.moves || [], src: "phone", when: new Date().toISOString() });
+  renderAnimals(); refreshReview(); if (curRun) { clearTimeout(histTimer); histRun = curRun; histTimer = setTimeout(() => { saveHistory(histRun); if (histRun === curRun) autoSaveShown(); histRun = null; }, 800); }
+}
+function tagInsect(i) {
+  const e = reviewEvents[i]; if (!e) return;
+  const id = curRun && curRun.hid + "#b" + i;
+  if (e.notBat === "insect") { e.notBat = null; e.ok = undefined; dropAnimalLabel(id); }
+  else { e.notBat = "insect"; e.ok = false; e.tag = null; e.autoAnimal = false;
+    putAnimalLabel(id, { label: "insect", name: "Insect", group: "Insect", video: curRun ? curRun.file.name : "", cave: $("cave").value || "", t0: e.t, clock: clockOf(e.t) || "", picture: e.img || "", crop: e.crop, kin: e.kin,
+      movement: [{ body_lengths_per_s: e.feat ? +(e.feat.speed / Math.max(1, e.feat.size)).toFixed(2) : null, size_pct: e.feat ? +(100 * e.feat.size / 960).toFixed(2) : null,
+        wingbeat_flap: e.feat ? +e.feat.flap.toFixed(3) : null, straightness: e.kin ? +(+e.kin[6]).toFixed(3) : null, width_to_height: e.feat ? +e.feat.aspect.toFixed(2) : null,
+        path: (e.path || []).map((q) => [+(q[0] / (lastProcW || 640)).toFixed(3), +(q[1] / ((lastProcW || 640) * 0.75)).toFixed(3)]) }], src: "phone", when: new Date().toISOString() }); }
+  refreshReview();
+}
+function renderAnimals() {
+  const A = (curRun && curRun.animals) || [];
+  $("aniCard").classList.toggle("hide", !curRun);
+  $("aniPlay").style.display = "none"; try { $("aniVid").pause(); } catch (_) {}
+  const nB = reviewEvents.filter((e) => e.autoAnimal && e.ok === false).length;
+  $("aniNote").innerHTML = A.length ? `Found <b>${A.length}</b> visit${A.length > 1 ? "s" : ""} by something bigger or slower than a bat. Watch each one and pick what it was. Your answers are saved to the animal labels file.` +
+    (nB ? `<br>${nB} "bat${nB > 1 ? "s" : ""}" that moved with an animal ${nB > 1 ? "were" : "was"} left out of the bat count.` : "")
+    : "No other animals were seen in this video.";
+  $("aniList").innerHTML = A.map((a, i) => `<div class="ev"><img src="${a.img}" alt=""><div style="flex:1"><b>Visit #${i + 1}</b> <span class="mut">${fmtT(a.t0)}–${fmtT(a.t1)}${clockOf(a.t0) ? " · " + clockOf(a.t0) : ""}</span>
+      <div class="mut" style="font-size:13px">${a.tag ? "✔ " + (animalGroup(a.tag) ? animalGroup(a.tag) + " · " : "") + animalName(a.tag) : "Looks like a " + guessSize(a) + "."}</div>
+      <div class="rv"><button class="btn sec" data-awatch="${i}">▶ Watch</button></div>
+      <div style="margin-top:6px">${animalSelect(i, a.tag)}</div></div></div>`).join("");
+  const L = loadAnimalLabels(), c = {}; L.forEach((x) => c[x.label] = (c[x.label] || 0) + 1);
+  $("aniLab").innerHTML = L.length ? `<b>${L.length}</b> confirmed: ` + Object.entries(c).map(([k, n]) => `${animalName(k) || k} ${n}`).join(" · ") : "No animals confirmed yet.";
+}
+$("aniList").addEventListener("change", (ev) => {
+  const sel = ev.target.closest("select.aniSel"); if (!sel) return;
+  const a = curRun && curRun.animals[+sel.dataset.ani]; if (!a) return;
+  if (sel.value !== (a.tag || "")) { a.tag = null; if (sel.value) tagAnimal(+sel.dataset.ani, sel.value); else tagAnimal(+sel.dataset.ani, "__clear"); }
+});
+$("aniList").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button"); if (!b) return;
+  if (b.dataset.awatch != null) {
+    const a = curRun.animals[+b.dataset.awatch], v = $("aniVid");
+    if (v.dataset.src !== vidURL) { v.src = vidURL; v.dataset.src = vidURL; }
+    $("aniPlay").style.display = "block"; $("aniTitle").textContent = `Visit #${a.i + 1} · ${fmtT(a.t0)}–${fmtT(a.t1)}`;
+    const end = a.t1 + 1, go = () => { v.currentTime = Math.max(0, a.t0 - 1); v.play().catch(() => {}); };
+    v.ontimeupdate = () => { if (v.currentTime >= end) v.pause(); };
+    if (v.readyState >= 1) go(); else v.onloadedmetadata = go;
+    $("aniPlay").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+});
+function animalReportHTML() {
+  const A = (curRun && curRun.animals) || []; if (!A.length) return "";
+  const c = animalCounts(A), un = c.unknown || 0; delete c.unknown;
+  const grp = {}; Object.entries(c).forEach(([k, n]) => { const g = animalGroup(k) || "Other"; grp[g] = (grp[g] || 0) + n; });
+  return `<h3>Other animals</h3><table>${Object.entries(grp).map(([g, n]) => `<tr><td><b>${g}</b></td><td><b>${n} visit${n > 1 ? "s" : ""}</b></td></tr>` +
+      Object.entries(c).filter(([k]) => (animalGroup(k) || "Other") === g).map(([k, m]) => `<tr><td style="padding-left:16px">${animalName(k)}</td><td>${m}</td></tr>`).join("")).join("")}` +
+    (un ? `<tr><td>Not identified yet</td><td>${un}</td></tr>` : "") + `</table>` +
+    `<table style="margin-top:6px">${A.map((a) => `<tr><td><img src="${a.img}" alt="" style="height:44px;border-radius:6px;vertical-align:middle"> Visit ${a.i + 1}</td><td>${clockOf(a.t0) || fmtT(a.t0)}–${clockOf(a.t1) || fmtT(a.t1)}</td><td>${a.tag ? animalName(a.tag) : "not identified (" + guessSize(a) + ")"}</td></tr>`).join("")}</table>`;
+}
+$("aniExport").onclick = () => {
+  const L = loadAnimalLabels();
+  if (!L.length) { sayMsg($("aniMsg"), "No animals confirmed yet."); return; }
+  saveFile("animal_labels.json", "application/json", JSON.stringify({ app: "Ghost Hunter: Bat Counter", kind: "animal labels", made: new Date().toISOString(), labels: L }, null, 1), $("aniMsg"));
+};
+$("aniImport").onclick = () => $("aniFile").click();
+$("aniFile").onchange = async () => {
+  const f = $("aniFile").files[0]; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text()), add = Array.isArray(j) ? j : j.labels || [];
+    const L = loadAnimalLabels(), have = new Set(L.map((x) => x.id)); let n = 0;
+    add.forEach((x) => { if (x && x.label && !have.has(x.id || "")) { L.push(Object.assign({ id: "imp" + Date.now() + "_" + n }, x)); n++; } });
+    saveAnimalLabels(L); renderAnimals(); sayMsg($("aniMsg"), `✔ Added ${n} animal label${n === 1 ? "" : "s"}.`, true);
+  } catch (e) { sayMsg($("aniMsg"), "Couldn't read that file: " + e.message); }
+  $("aniFile").value = "";
+};
 
 // ---------- save a file (report, CSV, labels) ----------
 function saveFile(name, mime, text, msgEl) {
@@ -1889,7 +2090,8 @@ function saveHistory(run) {
   const entry = { hid: run.hid, when, file: run.file.name, cave: $("cave").value || "", dur: Math.round(run.dur),
     in: kept.filter(([e]) => e.dir === "IN").length, out: kept.filter(([e]) => e.dir === "OUT").length,
     ghost: kept.filter(([, f]) => f.sp === "ghost").length, other: kept.filter(([, f]) => f.sp === "other").length,
-    unsure: kept.filter(([, f]) => f.sp === "unsure").length, checked: ev.filter((e) => e.ok !== undefined || e.tag).length, total: ev.length };
+    unsure: kept.filter(([, f]) => f.sp === "unsure").length,
+    animals: (run.animals || []).filter((a) => a.tag !== "none").length, animalTags: animalCounts(run.animals || []), checked: ev.filter((e) => e.ok !== undefined || e.tag).length, total: ev.length };
   const H = loadHist().filter((h) => h.hid !== entry.hid); H.push(entry);
   try { localStorage.setItem(HKEY, JSON.stringify(H.slice(-1000))); } catch (_) {}
 }
