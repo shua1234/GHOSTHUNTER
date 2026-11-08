@@ -79,7 +79,7 @@ a{color:#8fe6b4}
 <body>
 <header>
   <div class="batgif batlogo" role="img" aria-label="Ghost Hunter bat"></div>
-  <div><h1>Ghost Hunter</h1><div class="tag">Bat Counter</div><div class="sub">Ghost bat ID · mobile v5.1 (build 5122)</div></div>
+  <div><h1>Ghost Hunter</h1><div class="tag">Bat Counter</div><div class="sub">Ghost bat ID · mobile v5.1 (build 5123)</div></div>
   <div class="lock" id="lock">🔒 Private</div>
 </header>
 <nav>
@@ -279,6 +279,7 @@ a{color:#8fe6b4}
       <li>Press <b>Learn from my labels</b>. It learns the same way as the PC (a picture of each bat plus its size, wingbeat and flight) and tests itself on bats it has never seen.</li>
       <li>Keep going until you have around 200 of each and the score is high. Sound is only a last resort.</li>
     </ol>
+    <div id="vData" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:6px 0 10px;color:var(--acc);font-weight:600;font-size:.92em"></div>
     <div id="labStats"></div>
     <div class="rv"><button class="btn" id="labLearn">🧠 Learn from my labels</button></div>
     <div class="rv"><button class="btn sec hide" id="labPC">Go back to the PC's model</button></div>
@@ -2154,6 +2155,15 @@ function renderLabStats() {
     `<p><b style="font-size:17px">Fair score: ${Math.round((m.balanced || 0) * 100)}%</b> <span class="mut">(ghost bats caught ${Math.round((m.recall_ghost || 0) * 100)}%, other bats caught ${Math.round((m.recall_other || 0) * 100)}%), tested on ${m.n_test || "?"} labelled bats it had never seen.</span></p>` +
     `<p class="mut">Now using: <b>${pc ? "your PC's Ghost Hunter 5.1 model" : "the model learned on this phone"}</b>, learned from ${m.n_ghost} ghost + ${m.n_other} other bats on ${m.when}.</p>`;
   $("labPC").classList.toggle("hide", pc);
+  // plain proof that the video data (labelled bats) is loaded, in case anything was deleted
+  const pG = PC_LABELS.filter((r) => r.label === "ghost").length, n = (v) => (v || 0).toLocaleString();
+  const okPC = PC_LABELS.length > 0, okM = SPM && SPM.trees && SPM.trees.length > 0;
+  $("vData").innerHTML =
+    `${okPC ? "✔ Video data loaded" : "✖ Video data from the PC is MISSING"}: ${n(PC_LABELS.length)} labelled bats built in from your PC (${n(pG)} ghost bat, ${n(PC_LABELS.length - pG)} other bats).<br>` +
+    `✔ Labelled on this phone: ${n(mine.length)} (${n(mG)} ghost, ${n(mO)} other).<br>` +
+    (okM ? `✔ Video learner ready: ${pc ? "your PC's model" : "learned on this phone"}, from ${n((m.n_ghost || 0) + (m.n_other || 0))} bats on ${String(m.when || "?").slice(0, 10)}, right ${Math.round((m.balanced || m.accuracy || 0) * 100)}% of the time.`
+         : `✖ Video learner NOT loaded`);
+  $("vData").style.color = okPC && okM ? "var(--acc)" : "var(--ghost)";
 }
 $("labLearn").onclick = async () => {
   const b = $("labLearn"); b.disabled = true;
