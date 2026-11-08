@@ -225,7 +225,7 @@ public class MainActivity extends Activity {
             b = new Notification.Builder(this);
         }
         Intent open = new Intent(this, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        b.setSmallIcon(R.mipmap.ic_launcher).setContentTitle("Ghost Hunter is counting").setContentText(text)
+        b.setSmallIcon(R.mipmap.ic_launcher).setContentTitle("Ghost Hunter: Bat Counter is counting").setContentText(text)
                 .setOngoing(true).setOnlyAlertOnce(true)
                 .setContentIntent(PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
         try {
