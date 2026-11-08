@@ -8,6 +8,9 @@ import android.app.PendingIntent;
 import android.os.Build;
 import android.view.WindowManager;
 import android.content.ClipData;
+import android.content.ContentValues;
+import android.database.Cursor;
+import android.provider.MediaStore;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -287,6 +290,49 @@ public class MainActivity extends Activity {
                     }
                 }
             });
+        }
+
+        /**
+         * Save a report straight onto the phone, with no questions: Download/Ghost Hunter on
+         * Android 10+, so the footage drive is only ever read. The same file name is overwritten
+         * when the bats are checked again. Returns where it went, or "" if it failed.
+         */
+        @JavascriptInterface
+        public String autoSave(String name, String mime, String text) {
+            try {
+                byte[] bytes = text.getBytes("UTF-8");
+                if (Build.VERSION.SDK_INT >= 29) {
+                    String rel = "Download/Ghost Hunter/";
+                    Uri coll = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
+                    Uri target = null;
+                    try (Cursor c = getContentResolver().query(coll, new String[]{MediaStore.MediaColumns._ID},
+                            MediaStore.MediaColumns.RELATIVE_PATH + "=? AND " + MediaStore.MediaColumns.DISPLAY_NAME + "=?",
+                            new String[]{rel, name}, null)) {
+                        if (c != null && c.moveToFirst()) target = Uri.withAppendedPath(coll, String.valueOf(c.getLong(0)));
+                    }
+                    if (target == null) {
+                        ContentValues v = new ContentValues();
+                        v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+                        v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+                        v.put(MediaStore.MediaColumns.RELATIVE_PATH, rel);
+                        target = getContentResolver().insert(coll, v);
+                    }
+                    if (target == null) return "";
+                    try (java.io.OutputStream out = getContentResolver().openOutputStream(target, "wt")) {
+                        out.write(bytes);
+                    }
+                    return "Download/Ghost Hunter";
+                }
+                java.io.File dir = getExternalFilesDir("Ghost Hunter");
+                if (dir == null) return "";
+                dir.mkdirs();
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(new java.io.File(dir, name))) {
+                    out.write(bytes);
+                }
+                return "Android/data/au.ghosthunter.mobile/files/Ghost Hunter";
+            } catch (Exception e) {
+                return "";
+            }
         }
 
         @JavascriptInterface
