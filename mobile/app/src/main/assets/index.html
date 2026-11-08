@@ -78,7 +78,7 @@ a{color:#8fe6b4}
 <body>
 <header>
   <div class="batgif batlogo" role="img" aria-label="Ghost Hunter bat"></div>
-  <div><h1>Ghost Hunter</h1><div class="tag">Bat Counter</div><div class="sub">Ghost bat ID · mobile v5.1 (build 5116)</div></div>
+  <div><h1>Ghost Hunter</h1><div class="tag">Bat Counter</div><div class="sub">Ghost bat ID · mobile v5.1 (build 5117)</div></div>
   <div class="lock" id="lock">🔒 Private</div>
 </header>
 <nav>
@@ -187,6 +187,14 @@ a{color:#8fe6b4}
 
 <!-- ================= CHECK ================= -->
 <section id="tab-check" class="hide">
+  <div class="card hide" id="savePrompt" style="border-color:var(--acc)">
+    <h2 style="margin-top:0">💾 Would you like to save to device?</h2>
+    <p class="mut" style="margin:4px 0 10px">Saves the report and CSV for each video. It keeps updating them as you check bats.</p>
+    <div class="rv"><button class="btn" id="spPhone">📱 This phone</button><button class="btn" id="spDrive">💽 The footage drive</button></div>
+    <label style="display:flex;gap:10px;align-items:center;margin-top:10px"><input type="checkbox" id="spRemember" style="width:22px;height:22px;flex:none"> Remember my choice</label>
+    <div id="spMsg"></div>
+  </div>
+  <div id="spDone"></div>
   <p class="empty" id="checkEmpty">Count a video first. Every bat it counts shows up here to replay and check.</p>
   <div class="card hide" id="checkCard">
     <h2>Check the counts</h2>
@@ -242,7 +250,7 @@ a{color:#8fe6b4}
     </details>
     <div class="rv" style="margin-top:10px"><button class="btn sec" id="repShare">Share report</button><button class="btn sec" id="repCopy">Copy report</button></div>
     <div class="rv"><button class="btn sec" id="repSaveHtml">💾 Save report file</button><button class="btn sec" id="repSaveCsv">💾 Save CSV</button></div>
-    <label id="autoRow" class="hide" style="display:flex;gap:10px;align-items:center;margin-top:10px;font-size:15px"><input type="checkbox" id="autoSave" checked style="width:22px;height:22px;flex:none"> Save every report on this phone automatically (Download › Ghost Hunter). Your footage drive is only read, never written to.</label>
+    <div id="autoRow" class="row hide" style="margin-top:10px"><label for="autoSave">Save results</label><select id="autoSave"><option value="ask">Ask after each count</option><option value="phone">Always to this phone</option><option value="drive">Always to the footage drive</option></select></div>
     <div class="mut" id="saveMsg" style="margin-top:4px"></div>
     <textarea id="repText" class="hide" readonly></textarea>
   </div>
@@ -1144,8 +1152,7 @@ $("go").onclick = async () => {
   runs.forEach((r) => { if (!done.some((d) => d.url === r.url)) URL.revokeObjectURL(r.url); });
   runs = done; done.forEach(saveHistory);
   $("runSel").innerHTML = runs.map((r, i) => `<option value="${i}">${i + 1}. ${r.file.name} · IN ${r.events.filter((e) => e.dir === "IN").length} OUT ${r.events.filter((e) => e.dir === "OUT").length}</option>`).join("");
-  if (AUTO_OK && $("autoSave").checked) for (let i = runs.length - 1; i > 0; i--) { showRun(i); autoSaveShown(); }
-  showRun(0); autoSaveShown(); showTab("check");
+  showRun(0); showTab("check"); afterCountSave();
 };
 let batchLabel = "";
 async function countOne() {
@@ -1648,20 +1655,66 @@ ${$("repBody").innerHTML}${$("repChart").innerHTML}${$("repTiming").innerHTML}${
   return html;
 }
 $("repSaveHtml").onclick = () => saveFile(`ghost-hunter-report-${safeName(vidFile && vidFile.name)}.html`, "text/html", reportHtml(), $("saveMsg"));
-// ---------- automatic saving onto the phone (never onto the footage drive) ----------
-const AUTO_OK = !!(window.GhostHunterAndroid && GhostHunterAndroid.autoSave);
+// ---------- saving results to the phone or to the drive the footage came from ----------
+const ANDROID = window.GhostHunterAndroid || {};
+const AUTO_OK = !!ANDROID.autoSave;
+let saveTo = "";            // "", "phone" or "drive" for the videos counted this time
 if (AUTO_OK) $("autoRow").classList.remove("hide");
-try { if (localStorage.getItem("ghm_autoSave") === "0") $("autoSave").checked = false; } catch (_) {}
-$("autoSave").onchange = () => { try { localStorage.setItem("ghm_autoSave", $("autoSave").checked ? "1" : "0"); } catch (_) {} if ($("autoSave").checked) autoSaveShown(); };
+try { const v = localStorage.getItem("ghm_saveTo"); if (v) $("autoSave").value = v; } catch (_) {}
+const rememberSave = (v) => { $("autoSave").value = v; try { localStorage.setItem("ghm_saveTo", v); } catch (_) {} };
+$("autoSave").onchange = () => { rememberSave($("autoSave").value); if ($("autoSave").value !== "ask" && runs.length) chooseSave($("autoSave").value); };
 function autoSaveShown() {
-  if (!AUTO_OK || !curRun || !$("autoSave").checked) return;
-  const b = safeName(curRun.file.name) || "video";
+  if (!AUTO_OK || !curRun || !saveTo) return true;
+  const b = safeName(curRun.file.name) || "video", rep = `ghost-hunter-report-${b}.html`, csv = `ghost-hunter-${b}.csv`;
   try {
-    const w = GhostHunterAndroid.autoSave(`ghost-hunter-report-${b}.html`, "text/html", reportHtml());
-    GhostHunterAndroid.autoSave(`ghost-hunter-${b}.csv`, "text/csv", $("csvV").value);
-    $("saveMsg").textContent = w ? `✔ Saved on this phone automatically: ${w} › ghost-hunter-report-${b}.html` : "Couldn't save automatically. Use Save report file instead.";
+    let w;
+    if (saveTo === "drive" && ANDROID.driveSave) {
+      w = ANDROID.driveSave(curRun.file.name, rep, "text/html", reportHtml());
+      if (w === "pick") return false;
+      if (w) ANDROID.driveSave(curRun.file.name, csv, "text/csv", $("csvV").value);
+    } else {
+      w = ANDROID.autoSave(rep, "text/html", reportHtml()); ANDROID.autoSave(csv, "text/csv", $("csvV").value);
+    }
+    $("saveMsg").textContent = w ? `✔ Saved to ${w} › ${rep}` : "Couldn't save there. Use Save report file instead.";
+    $("batchStat").textContent = w ? `✔ Results saved to ${w}` : "";
   } catch (_) {}
+  return true;
 }
+function saveAllRuns() {
+  const keep = Math.max(0, runs.indexOf(curRun));
+  for (let i = runs.length - 1; i >= 0; i--) { showRun(i); if (!autoSaveShown()) { showRun(keep); return false; } }
+  if (keep) showRun(keep);
+  return true;
+}
+function chooseSave(where) {
+  saveTo = where; sayMsg($("spMsg"), "");
+  if (!saveAllRuns()) {           // the drive hasn't been allowed yet: ask Android once
+    $("savePrompt").classList.remove("hide");
+    sayMsg($("spMsg"), "Pick the footage drive (the folder the videos are in), then tap <b>Use this folder</b> and <b>Allow</b>. You only do this once.");
+    ANDROID.pickDriveFolder();
+    return;
+  }
+  savedNote();
+}
+function savedNote() {
+  $("savePrompt").classList.add("hide");
+  sayMsg($("spDone"), $("saveMsg").textContent.replace(/ › ghost-hunter-report-.*$/, "") + (runs.length > 1 ? ` (${runs.length} videos)` : ""), /^✔/.test($("saveMsg").textContent));
+  clearTimeout(savedNote.t); savedNote.t = setTimeout(() => sayMsg($("spDone"), ""), 8000);
+}
+window.ghDrivePicked = (ok) => {
+  if (ok && saveAllRuns()) { savedNote(); return; }
+  saveTo = ""; $("savePrompt").classList.remove("hide");
+  sayMsg($("spMsg"), ok ? "Couldn't save to that folder. Try again and pick the drive the videos are on." : "The drive wasn't allowed, so nothing was saved there. Tap a choice to try again.");
+};
+const pickSave = (where) => { if ($("spRemember").checked) rememberSave(where); chooseSave(where); };
+$("spPhone").onclick = () => pickSave("phone");
+$("spDrive").onclick = () => pickSave("drive");
+function afterCountSave() {
+  saveTo = ""; if (!AUTO_OK) return;
+  const v = $("autoSave").value;
+  if (v === "phone" || v === "drive") chooseSave(v); else $("savePrompt").classList.remove("hide");
+}
+
 
 // ---------- presets (basic settings up front, the PC tolerances under Advanced) ----------
 const BASE = { spConf: 70, sens: 25, pw: 640, minA: 12, maxA: 2500, gate: 60, pol: 0, mcon: 0, mlen: 2, mstr: 50, mtrav: 22, mpts: 3, odir: 30, axt: 6, thin: 0, miss: 6, warm: 30, dz: 2, firstN: 0, eL: 0, eR: 0, eT: 0, eB: 0, strk: 1 };

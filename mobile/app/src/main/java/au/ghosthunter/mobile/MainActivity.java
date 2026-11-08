@@ -11,6 +11,9 @@ import android.content.ClipData;
 import android.content.ContentValues;
 import android.database.Cursor;
 import android.provider.MediaStore;
+import android.provider.DocumentsContract;
+import android.provider.OpenableColumns;
+import android.content.SharedPreferences;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -22,6 +25,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -31,6 +35,9 @@ import java.util.Set;
  */
 public class MainActivity extends Activity {
     private static final int PICK_FILES = 1;
+    private static final int PICK_DRIVE = 3;
+    /** Where each chosen video came from (file name -> its address), so a report can go beside it. */
+    private final HashMap<String, Uri> videoFrom = new HashMap<>();
     private static final int SAVE_FILE = 2;
     private static final int NOTE_ID = 51;
     private static final String CHANNEL = "counting";
@@ -160,8 +167,88 @@ public class MainActivity extends Activity {
         return out.toArray(new String[0]);
     }
 
+    private String displayName(Uri u) {
+        try (Cursor c = getContentResolver().query(u, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) return c.getString(0);
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private SharedPreferences prefs() {
+        return getSharedPreferences("ghosthunter", MODE_PRIVATE);
+    }
+
+    /** The drive folder the user allowed once, if Android still lets us write to it. */
+    private Uri driveTree() {
+        String t = prefs().getString("driveTree", null);
+        if (t == null) return null;
+        Uri tree = Uri.parse(t);
+        for (android.content.UriPermission p : getContentResolver().getPersistedUriPermissions()) {
+            if (p.getUri().equals(tree) && p.isWritePermission()) return tree;
+        }
+        return null;
+    }
+
+    private static String volumeOf(String docId) {
+        int i = docId.indexOf(':');
+        return i < 0 ? "" : docId.substring(0, i);
+    }
+
+    /** Write a report next to the video on its drive (or into the allowed drive folder). */
+    private String writeToDrive(String video, String name, String mime, String text) throws Exception {
+        Uri tree = driveTree();
+        if (tree == null) return "pick";
+        String treeId = DocumentsContract.getTreeDocumentId(tree);
+        String dirId = treeId;
+        Uri v = video == null ? null : videoFrom.get(video);
+        if (v != null && DocumentsContract.isDocumentUri(this, v) && tree.getAuthority().equals(v.getAuthority())) {
+            String vid = DocumentsContract.getDocumentId(v);
+            int slash = vid.lastIndexOf('/');
+            String parent = slash > 0 ? vid.substring(0, slash) : (vid.indexOf(':') >= 0 ? vid.substring(0, vid.indexOf(':') + 1) : null);
+            String treePath = treeId.endsWith("/") || treeId.endsWith(":") ? treeId : treeId + "/";
+            if (parent != null && volumeOf(vid).equals(volumeOf(treeId))
+                    && ((parent + "/").startsWith(treePath) || parent.equals(treeId) || treeId.endsWith(":"))) {
+                dirId = parent;
+            }
+        }
+        Uri dir = DocumentsContract.buildDocumentUriUsingTree(tree, dirId);
+        Uri kids = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId);
+        Uri target = null;
+        try (Cursor c = getContentResolver().query(kids, new String[]{
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null, null)) {
+            while (c != null && c.moveToNext()) {
+                if (name.equals(c.getString(1))) {
+                    target = DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0));
+                    break;
+                }
+            }
+        }
+        if (target == null) target = DocumentsContract.createDocument(getContentResolver(), dir, mime, name);
+        if (target == null) return "";
+        try (java.io.OutputStream out = getContentResolver().openOutputStream(target, "wt")) {
+            out.write(text.getBytes("UTF-8"));
+        }
+        String where = dirId.indexOf(':') >= 0 ? dirId.substring(dirId.indexOf(':') + 1) : dirId;
+        return "the footage drive" + (where.isEmpty() ? "" : " › " + where.replace("/", " › "));
+    }
+
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
+        if (request == PICK_DRIVE) {
+            boolean ok = false;
+            if (result == RESULT_OK && data != null && data.getData() != null) {
+                try {
+                    getContentResolver().takePersistableUriPermission(data.getData(),
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                    prefs().edit().putString("driveTree", data.getData().toString()).apply();
+                    ok = true;
+                } catch (Exception ignored) {
+                }
+            }
+            web.evaluateJavascript("window.ghDrivePicked && ghDrivePicked(" + ok + ")", null);
+            return;
+        }
         if (request == SAVE_FILE) {
             boolean ok = false;
             if (result == RESULT_OK && data != null && data.getData() != null && saveText != null) {
@@ -193,6 +280,10 @@ public class MainActivity extends Activity {
             }
             if (!list.isEmpty()) {
                 uris = list.toArray(new Uri[0]);
+                for (Uri u : list) {
+                    String n = displayName(u);
+                    if (n != null) videoFrom.put(n, u);
+                }
             }
         }
         pending.onReceiveValue(uris);
@@ -333,6 +424,34 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 return "";
             }
+        }
+
+        /** Save beside the footage. Returns where it went, "pick" if no drive folder is allowed yet, or "" on failure. */
+        @JavascriptInterface
+        public String driveSave(String video, String name, String mime, String text) {
+            try {
+                return writeToDrive(video, name, mime, text);
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        /** Ask once for the footage drive (the user taps the drive, then "Use this folder"). */
+        @JavascriptInterface
+        public void pickDriveFolder() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                    pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                    try {
+                        startActivityForResult(pick, PICK_DRIVE);
+                    } catch (Exception e) {
+                        web.evaluateJavascript("window.ghDrivePicked && ghDrivePicked(false)", null);
+                    }
+                }
+            });
         }
 
         @JavascriptInterface
