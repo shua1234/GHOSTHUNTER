@@ -8,7 +8,7 @@ Works on Android 7.0 or newer.
 1. Download **`Ghosthunter-Mobile-v5.1.apk`** to your phone.
 2. Open the download. The first time, Android asks to allow installs from your browser or Files app: allow it, then tap **Install**.
 3. If Play Protect warns about an unknown app, tap **More details → Install anyway**. This happens because the app isn't from the Play Store.
-4. Open **Ghosthunter** from your app list.
+4. Open **Ghost Hunter: Bat Counter** from your app list.
 
 ### Where to get the APK
 - **[Releases → v5.1](https://github.com/shua1234/GHOSTHUNTER/releases/tag/v5.1)**: tap **`Ghosthunter-Mobile-v5.1.apk`**.
@@ -19,6 +19,6 @@ Works on Android 7.0 or newer.
 2. In `app/build.gradle`, raise `versionCode` (for example 5101 → 5201) and set `versionName` (for example "5.2").
 3. Push to GitHub. The **Build Android app** workflow builds the new APK automatically.
 
-The APK is signed with a temporary key unless the repo secrets `ANDROID_KEYSTORE_B64` and `ANDROID_KEY_PASSWORD` are set. Without them, installing a newer build may mean uninstalling the old one first.
+Builds from 5112 on are signed with the permanent key (repo secrets `ANDROID_KEYSTORE_B64` and `ANDROID_KEY_PASSWORD`), so new builds install over old ones. If a phone still has a build older than 5112, uninstall it once before installing the new one.
 
 Looking for the Windows version? See [`desktop/README.md`](../desktop/README.md).
