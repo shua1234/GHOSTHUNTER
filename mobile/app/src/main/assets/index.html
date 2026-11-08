@@ -79,7 +79,7 @@ a{color:#8fe6b4}
 <body>
 <header>
   <div class="batgif batlogo" role="img" aria-label="Ghost Hunter bat"></div>
-  <div><h1>Ghost Hunter</h1><div class="tag">Bat Counter</div><div class="sub">Ghost bat ID · mobile v5.1 (build 5123)</div></div>
+  <div><h1>Ghost Hunter</h1><div class="tag">Bat Counter</div><div class="sub">Ghost bat ID · mobile v5.1 (build 5124)</div></div>
   <div class="lock" id="lock">🔒 Private</div>
 </header>
 <nav>
@@ -282,7 +282,7 @@ a{color:#8fe6b4}
     <div id="vData" style="background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:6px 0 10px;color:var(--acc);font-weight:600;font-size:.92em"></div>
     <div id="labStats"></div>
     <div class="rv"><button class="btn" id="labLearn">🧠 Learn from my labels</button></div>
-    <div class="rv"><button class="btn sec hide" id="labPC">Go back to the PC's model</button></div>
+    <div class="rv"><button class="btn sec hide" id="labPC">Go back to the built-in model</button></div>
     <div class="rv"><button class="btn sec" id="labExport">⬆ Export my labels</button><label class="btn sec" style="text-align:center;cursor:pointer"><input type="file" id="labImport" accept=".json,application/json,*/*">⬇ Import labels</label></div>
     <div class="rv"><button class="btn sec" id="labClear">Delete my phone labels</button></div>
     <div id="labMsg"></div>
@@ -2150,18 +2150,18 @@ function renderLabStats() {
   const bar = (n) => `<div class="meter"><i style="width:${Math.min(100, n / 2)}%"></i></div>`, done = Math.min(200, nG) + Math.min(200, nO);
   const m = SPM.meta || {}, pc = SPM === PC_MODEL;
   $("labStats").innerHTML = `<b>Ghost bats labelled: ${nG} / 200</b>${bar(nG)}<b>Other bats labelled: ${nO} / 200</b>${bar(nO)}` +
-    `<p class="mut" style="margin-top:0">${PC_LABELS.length} came from your PC (built in) · ${mine.length} labelled or imported on this phone (${mG} ghost, ${mO} other).</p>` +
+    `<p class="mut" style="margin-top:0">${PC_LABELS.length} built into this version of the app · ${mine.length} labelled or imported on this phone (${mG} ghost, ${mO} other).</p>` +
     `<p><b style="font-size:18px">${done >= 400 ? "Target reached" : (400 - done) + " to go"}</b> <span class="mut">(${done} of 400 confirmed)</span></p>` +
     `<p><b style="font-size:17px">Fair score: ${Math.round((m.balanced || 0) * 100)}%</b> <span class="mut">(ghost bats caught ${Math.round((m.recall_ghost || 0) * 100)}%, other bats caught ${Math.round((m.recall_other || 0) * 100)}%), tested on ${m.n_test || "?"} labelled bats it had never seen.</span></p>` +
-    `<p class="mut">Now using: <b>${pc ? "your PC's Ghost Hunter 5.1 model" : "the model learned on this phone"}</b>, learned from ${m.n_ghost} ghost + ${m.n_other} other bats on ${m.when}.</p>`;
+    `<p class="mut">Now using: <b>${pc ? "the model built into this version of the app" : "the model learned on this phone"}</b>, learned from ${m.n_ghost} ghost + ${m.n_other} other bats on ${m.when}.</p>`;
   $("labPC").classList.toggle("hide", pc);
   // plain proof that the video data (labelled bats) is loaded, in case anything was deleted
   const pG = PC_LABELS.filter((r) => r.label === "ghost").length, n = (v) => (v || 0).toLocaleString();
   const okPC = PC_LABELS.length > 0, okM = SPM && SPM.trees && SPM.trees.length > 0;
   $("vData").innerHTML =
-    `${okPC ? "✔ Video data loaded" : "✖ Video data from the PC is MISSING"}: ${n(PC_LABELS.length)} labelled bats built in from your PC (${n(pG)} ghost bat, ${n(PC_LABELS.length - pG)} other bats).<br>` +
+    `${okPC ? "✔ Video data loaded" : "✖ Built-in video data is MISSING"}: ${n(PC_LABELS.length)} labelled bats built into this version of the app (${n(pG)} ghost bat, ${n(PC_LABELS.length - pG)} other bats).<br>` +
     `✔ Labelled on this phone: ${n(mine.length)} (${n(mG)} ghost, ${n(mO)} other).<br>` +
-    (okM ? `✔ Video learner ready: ${pc ? "your PC's model" : "learned on this phone"}, from ${n((m.n_ghost || 0) + (m.n_other || 0))} bats on ${String(m.when || "?").slice(0, 10)}, right ${Math.round((m.balanced || m.accuracy || 0) * 100)}% of the time.`
+    (okM ? `✔ Video learner ready: ${pc ? "built into this version of the app" : "learned on this phone"}, from ${n((m.n_ghost || 0) + (m.n_other || 0))} bats on ${String(m.when || "?").slice(0, 10)}, right ${Math.round((m.balanced || m.accuracy || 0) * 100)}% of the time.`
          : `✖ Video learner NOT loaded`);
   $("vData").style.color = okPC && okM ? "var(--acc)" : "var(--ghost)";
 }
@@ -2174,7 +2174,7 @@ $("labLearn").onclick = async () => {
   } catch (err) { sayMsg($("labMsg"), err.message); }
   b.disabled = false; b.textContent = "🧠 Learn from my labels"; renderLabStats();
 };
-$("labPC").onclick = () => { try { localStorage.removeItem(MKEY); } catch (_) {} SPM = PC_MODEL; renderLabStats(); if (reviewEvents.length) refreshReview(); sayMsg($("labMsg"), "Back to your PC's model.", true); };
+$("labPC").onclick = () => { try { localStorage.removeItem(MKEY); } catch (_) {} SPM = PC_MODEL; renderLabStats(); if (reviewEvents.length) refreshReview(); sayMsg($("labMsg"), "Back to the built-in model.", true); };
 function shortHash(s) { let h1 = 0x811c9dc5, h2 = 0x01000193; for (let i = 0; i < s.length; i++) { h1 = Math.imul(h1 ^ s.charCodeAt(i), 16777619); h2 = Math.imul(h2 + s.charCodeAt(i), 2246822519); } return ((h1 >>> 0).toString(16) + (h2 >>> 0).toString(16)).padStart(16, "0").slice(0, 16); }
 $("labExport").onclick = () => {   // same layout as the PC's bat_labels.json, so the PC can import it
   const L = loadLabels().filter((r) => r.crop && r.kin).map((r) => ({ f: [], label: r.label, crop: r.crop, kin: r.kin, h: shortHash(r.crop), src: "phone" }));
@@ -2200,8 +2200,8 @@ $("labImport").onchange = async (e) => {
 };
 let labDelArmed = 0;
 $("labClear").onclick = () => {
-  if (Date.now() - labDelArmed > 4000) { labDelArmed = Date.now(); sayMsg($("labMsg"), "Tap <b>Delete my phone labels</b> again to delete them. Your PC's 822 built-in bats stay. Export first if you want a copy."); return; }
-  saveLabels([]); renderLabStats(); if (reviewEvents.length) refreshReview(); sayMsg($("labMsg"), "Phone labels deleted. Your PC's built-in bats are still there.", true);
+  if (Date.now() - labDelArmed > 4000) { labDelArmed = Date.now(); sayMsg($("labMsg"), "Tap <b>Delete my phone labels</b> again to delete them. The app's built-in bats stay. Export first if you want a copy."); return; }
+  saveLabels([]); renderLabStats(); if (reviewEvents.length) refreshReview(); sayMsg($("labMsg"), "Phone labels deleted. The app's built-in bats are still there.", true);
 };
 try { const pv = localStorage.getItem("ghm_set_preset"); if (pv) $("preset").value = pv; } catch (_) {}
 setZoneMode("line");
