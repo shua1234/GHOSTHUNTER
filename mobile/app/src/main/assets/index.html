@@ -78,7 +78,7 @@ a{color:#8fe6b4}
 <body>
 <header>
   <div class="batgif batlogo" role="img" aria-label="Ghost Hunter bat"></div>
-  <div><h1>Ghost Hunter</h1><div class="tag">Bat Counter</div><div class="sub">Ghost bat ID · mobile v5.1 (build 5117)</div></div>
+  <div><h1>Ghost Hunter</h1><div class="tag">Bat Counter</div><div class="sub">Ghost bat ID · mobile v5.1 (build 5118)</div></div>
   <div class="lock" id="lock">🔒 Private</div>
 </header>
 <nav>
@@ -116,13 +116,13 @@ a{color:#8fe6b4}
   <div class="card hide" id="lineCard">
     <div class="step"><div class="num">2</div><div style="flex:1">
       <h2>Draw the counting line or zone</h2>
-      <div class="row" style="margin-bottom:8px"><button class="btn sec" id="modeLine">Line</button><button class="btn sec" id="modeBox">Box zone</button><button class="btn sec" id="modeShape">Shape zone</button></div>
+      <div class="row" style="margin-bottom:8px"><button class="btn sec" id="modeLine">Line</button><button class="btn sec" id="modeBox">Box zone</button><button class="btn sec" id="modeShape">Multi-point</button></div>
       <p class="mut" id="lineHelp">Tap where the line <b>starts</b>.</p>
       <div id="zoneWrap"><canvas class="view" id="setupCv"></canvas></div>
       <div class="rv"><button class="btn sec" id="zoneFull">⛶ Full screen</button><button class="btn sec hide" id="zoomReset">Reset zoom</button></div>
       <p class="mut" style="margin:4px 0 0">Pinch with two fingers to zoom in on the entrance.</p>
       <div class="row" style="margin-top:8px"><button class="btn sec" id="lineReset">Redraw line</button><button class="btn sec" id="lineDefault">Use middle line</button></div>
-      <div class="row hide" id="shapeBtns" style="margin-top:8px"><button class="btn sec" id="shapeUndo">Undo last point</button><button class="btn sec" id="shapeFinish">Finish shape</button></div>
+      <div class="row hide" id="shapeBtns" style="margin-top:8px"><button class="btn sec" id="shapeUndo">Undo last point</button><button class="btn sec" id="shapeFinish">Finish zone</button></div>
     </div></div>
   </div>
 
@@ -1035,19 +1035,19 @@ function setZoneMode(m) {
   $("modeLine").classList.toggle("on", m === "line"); $("modeBox").classList.toggle("on", m === "box"); $("modeShape").classList.toggle("on", m === "shape");
   $("shapeBtns").classList.toggle("hide", m !== "shape");
   $("lineReset").textContent = m === "box" ? "Redraw box" : m === "shape" ? "Clear all" : "Redraw line";
-  $("lineHelp").innerHTML = m === "shape" ? "Tap points around the <b>cave entrance</b>, then press <b>Finish shape</b>. Bats flying <b>into</b> the shape count IN, <b>out of</b> it count OUT." : m === "box" ? "Drag a box around the <b>roost / cave entrance</b>. Bats flying <b>into</b> the box count IN, <b>out of</b> it count OUT." : "Tap where the line <b>starts</b>.";
+  $("lineHelp").innerHTML = m === "shape" ? "Tap points around the <b>cave entrance</b>, then press <b>Finish zone</b>. Bats flying <b>into</b> the zone count IN, <b>out of</b> it count OUT." : m === "box" ? "Drag a box around the <b>roost / cave entrance</b>. Bats flying <b>into</b> the box count IN, <b>out of</b> it count OUT." : "Tap where the line <b>starts</b>.";
   if (setupCv.width) drawSetup();
 }
 $("modeLine").onclick = () => setZoneMode("line");
 $("modeBox").onclick = () => setZoneMode("box");
 $("modeShape").onclick = () => setZoneMode("shape");
-$("shapeUndo").onclick = () => { if (zoneMode !== "shape") return; line = null; linePts.pop(); $("lineHelp").innerHTML = linePts.length ? `${linePts.length} point(s). Keep tapping around the entrance, then <b>Finish shape</b>.` : "Tap points around the <b>cave entrance</b>, then press <b>Finish shape</b>."; drawSetup(); };
+$("shapeUndo").onclick = () => { if (zoneMode !== "shape") return; line = null; linePts.pop(); $("lineHelp").innerHTML = linePts.length ? `${linePts.length} point(s). Keep tapping around the entrance, then <b>Finish zone</b>.` : "Tap points around the <b>cave entrance</b>, then press <b>Finish zone</b>."; drawSetup(); };
 $("shapeFinish").onclick = () => {
   if (zoneMode !== "shape" || line) return;
-  if (linePts.length < 3) { $("lineHelp").innerHTML = "A shape needs at least <b>3 points</b>. Tap more points around the entrance."; return; }
+  if (linePts.length < 3) { $("lineHelp").innerHTML = "A multi-point zone needs at least <b>3 points</b>. Tap more points around the entrance."; return; }
   const xs = linePts.map((p) => p[0]), ys = linePts.map((p) => p[1]), cx = xs.reduce((a, b) => a + b, 0) / xs.length, cy = ys.reduce((a, b) => a + b, 0) / ys.length;
   line = { poly: linePts.slice(), a: linePts[0], b: linePts[1], inside: [cx, cy] };
-  $("lineHelp").innerHTML = `✔ Shape set (${linePts.length} points). Bats flying <b>into</b> it count IN, <b>out of</b> it count OUT.`; drawSetup();
+  $("lineHelp").innerHTML = `✔ Multi-point zone set (${linePts.length} points). Bats flying <b>into</b> it count IN, <b>out of</b> it count OUT.`; drawSetup();
 };
 // Taps place points, one finger drags a box, two fingers pinch-zoom (zoom never places a point).
 const ptrs = new Map(); let pinch = null, pinched = false, downAt = null, zoom = { s: 1, x: 0, y: 0 };
@@ -1066,7 +1066,7 @@ $("zoneFull").onclick = () => {
   zoom = { s: 1, x: 0, y: 0 }; applyZoom(); if (!fs) $("lineCard").scrollIntoView({ block: "start" });
 };
 function addPoint(p) {
-  if (zoneMode === "shape") { linePts.push(p); $("lineHelp").innerHTML = `${linePts.length} point(s). Keep tapping around the entrance, then <b>Finish shape</b>.`; drawSetup(); return; }
+  if (zoneMode === "shape") { linePts.push(p); $("lineHelp").innerHTML = `${linePts.length} point(s). Keep tapping around the entrance, then <b>Finish zone</b>.`; drawSetup(); return; }
   linePts.push(p);
   if (linePts.length === 1) $("lineHelp").innerHTML = "Now tap where the line <b>ends</b>.";
   else if (linePts.length === 2) $("lineHelp").innerHTML = "Now tap the <b>roost / cave side</b> of the line (bats going this way count as IN).";
