@@ -18,8 +18,8 @@ header svg{flex:none}
 header h1{font-size:20px;margin:0;letter-spacing:.3px}
 header .sub{color:var(--mut);font-size:12.5px}
 .lock{margin-left:auto;font-size:12px;color:var(--ok);border:1px solid #2b5a3c;border-radius:20px;padding:3px 9px;white-space:nowrap}
-nav{display:flex;gap:6px;padding:4px 12px 10px;position:sticky;top:0;background:var(--bg);z-index:5;border-bottom:1px solid var(--line)}
-nav button{flex:1;background:var(--card);color:var(--mut);border:1px solid var(--line);border-radius:10px;padding:10px 6px;font-size:14.5px;font-weight:600}
+nav{display:flex;gap:6px;padding:4px 12px 10px;overflow-x:auto;scrollbar-width:none;position:sticky;top:0;background:var(--bg);z-index:5;border-bottom:1px solid var(--line)}
+nav button{flex:none;background:var(--card);color:var(--mut);border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-size:14px;font-weight:600;white-space:nowrap}
 nav button.on{background:var(--acc);color:#1a0f08;border-color:var(--acc)}
 main{max-width:900px;margin:0 auto;padding:12px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
@@ -61,29 +61,52 @@ details summary{cursor:pointer;color:var(--mut);font-size:14px;padding:4px 0}
 textarea{width:100%;height:120px;background:#0f1317;color:#cfd8df;border:1px solid var(--line);border-radius:8px;font:12px ui-monospace,Consolas,monospace}
 ul{padding-left:20px;margin:6px 0}li{margin:4px 0}
 a{color:#f0a070}
+.rv.big3 button{padding:14px 6px;font-size:16px;font-weight:700}
+#zoneWrap{position:relative;overflow:hidden;border-radius:10px;background:#000;touch-action:none}
+#zoneWrap canvas.view{border-radius:0;transform-origin:0 0}
+#lineCard.fs{position:fixed;inset:0;z-index:60;margin:0;border-radius:0;overflow:auto;padding:10px}
+#lineCard.fs .num{display:none}
+.meter{height:12px;background:var(--card2);border-radius:7px;overflow:hidden;margin:4px 0 10px}.meter i{display:block;height:100%;background:var(--acc)}
+.hist td{padding:5px 4px;border-bottom:1px solid var(--line);font-size:13.5px}.hist{width:100%;border-collapse:collapse}
+.empty{color:var(--mut);text-align:center;padding:24px 8px}
 </style>
 </head>
 <body>
 <header>
   <svg width="40" height="40" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="31" fill="#1d232a" stroke="#e0763a" stroke-width="2"/><path d="M8 34 L20 24 L26 30 L32 21 L38 30 L44 24 L56 34 L44 36 L32 44 L20 36Z" fill="#e0763a"/></svg>
-  <div><h1>Ghost Hunter</h1><div class="sub">Bat counter &amp; ghost bat ID · mobile v5.1 (build 5110: shape zones, ghost/other tags, full report)</div></div>
+  <div><h1>Ghost Hunter</h1><div class="sub">Bat counter &amp; ghost bat ID · mobile v5.1 (build 5111)</div></div>
   <div class="lock" id="lock">🔒 Private</div>
 </header>
 <nav>
-  <button data-tab="video" class="on">🎥 Video count</button>
+  <button data-tab="count" class="on">🎥 Count</button>
+  <button data-tab="check">✔ Check</button>
+  <button data-tab="report">📊 Report</button>
+  <button data-tab="ghost">👻 Ghost vs other</button>
+  <button data-tab="history">🗂 History</button>
   <button data-tab="sound">🔊 Sound ID</button>
   <button data-tab="about">ℹ️ About</button>
 </nav>
 <main>
 
-<!-- ================= VIDEO ================= -->
-<section id="tab-video">
+<!-- ================= COUNT ================= -->
+<div class="card hide" id="runBar" style="padding:8px 12px"><div class="set" style="margin:0"><span>Video</span><select id="runSel" style="width:210px"></select></div></div>
+
+<section id="tab-count">
   <div class="card">
     <div class="step"><div class="num">1</div><div style="flex:1">
-      <h2>Choose a trail-cam video</h2>
-      <label class="file"><input type="file" id="vidFile" accept="video/*,.mp4,.mov,.m4v,.webm"><b>Tap to choose a video</b><br><span class="mut">MP4 / MOV. It stays on this device.</span></label>
+      <h2>Choose trail-cam videos</h2>
+      <label class="file"><input type="file" id="vidFile" accept="video/*,.mp4,.mov,.m4v,.webm" multiple><b>Tap to choose one or more videos</b><br><span class="mut">MP4 / MOV, from the phone or a plugged-in drive. They stay on this device.</span></label>
       <div id="vidMsg"></div>
+      <div id="queueList" class="mut"></div>
     </div></div>
+  </div>
+
+  <div class="card" id="caveCard">
+    <h2>Cave setup</h2>
+    <div class="set" style="margin-top:0"><span>Saved setups</span><select id="caveSel" style="width:180px"></select></div>
+    <div class="set"><span>Name</span><input type="text" id="caveName" placeholder="e.g. Mine shaft 2" style="width:180px"></div>
+    <div class="rv"><button class="btn sec" id="caveSave">💾 Save this setup</button><button class="btn sec" id="caveDel">Delete</button></div>
+    <div class="mut" id="caveMsg" style="margin-top:6px">Saves the zone, settings and location for this cave, so next time you just pick it.</div>
   </div>
 
   <div class="card hide" id="lineCard">
@@ -91,7 +114,9 @@ a{color:#f0a070}
       <h2>Draw the counting line or zone</h2>
       <div class="row" style="margin-bottom:8px"><button class="btn sec" id="modeLine">Line</button><button class="btn sec" id="modeBox">Box zone</button><button class="btn sec" id="modeShape">Shape zone</button></div>
       <p class="mut" id="lineHelp">Tap where the line <b>starts</b>.</p>
-      <canvas class="view" id="setupCv"></canvas>
+      <div id="zoneWrap"><canvas class="view" id="setupCv"></canvas></div>
+      <div class="rv"><button class="btn sec" id="zoneFull">⛶ Full screen</button><button class="btn sec hide" id="zoomReset">Reset zoom</button></div>
+      <p class="mut" style="margin:4px 0 0">Pinch with two fingers to zoom in on the entrance.</p>
       <div class="row" style="margin-top:8px"><button class="btn sec" id="lineReset">Redraw line</button><button class="btn sec" id="lineDefault">Use middle line</button></div>
       <div class="row hide" id="shapeBtns" style="margin-top:8px"><button class="btn sec" id="shapeUndo">Undo last point</button><button class="btn sec" id="shapeFinish">Finish shape</button></div>
     </div></div>
@@ -99,16 +124,17 @@ a{color:#f0a070}
 
   <div class="card hide" id="soundCard">
     <div class="step"><div class="num">3</div><div style="flex:1">
-      <h2>Sound for ghost bat ID</h2>
-      <p class="mut">Ghost Hunter uses the video's own sound. If you have a bat detector recording (WAV) from the same night, add it for much better ID.</p>
-      <label class="file"><input type="file" id="batWav" accept=".wav,audio/wav,audio/x-wav"><b>Optional: add bat detector WAV</b></label>
-      <div class="set hide" id="offsetRow"><span>Detector started this many seconds <b>before</b> the video (use − if after)</span><input type="number" id="offset" value="0" step="0.1"></div>
-      <div id="wavMsg"></div>
-      <details style="margin-top:8px"><summary>Counting settings</summary>
-        <div class="set">
+      <h2>Counting settings</h2>
+      <div id="setAll">
+      <div class="set">
+          <span><b>Preset</b></span><select id="preset" style="width:160px"><option value="custom">Custom</option><option value="thermal" selected>Thermal camera</option><option value="ir">IR trail cam (night)</option><option value="phone">Phone / WhatsApp video</option><option value="pc">PC 5.1 numbers</option></select>
           <span>Sensitivity (lower = more sensitive)</span><input type="number" id="sens" value="25" min="5" max="100">
           <span>Analysis width</span><select id="pw"><option value="480">480 px (fastest)</option><option value="640" selected>640 px</option><option value="960">960 px (like PC)</option></select>
           <span>Smallest bat (pixels at 960 px)</span><input type="number" id="minA" value="12" min="1">
+          <span>Playback speed while counting</span><select id="rate"><option value="1" selected>1× (most accurate)</option><option value="2">2×</option><option value="4">4× (fast phones / laptops)</option></select>
+      </div>
+      <details style="margin-top:8px"><summary>Advanced settings (all the PC tolerances)</summary>
+        <div class="set">
           <span>Largest bat (pixels at 960 px)</span><input type="number" id="maxA" value="2500" min="10">
           <span>Max bat travel per frame (px at 960)</span><input type="number" id="gate" value="60" min="5">
           <span>Bats show as (thermal)</span><select id="pol"><option value="0" selected>Either</option><option value="1">Brighter (white-hot)</option><option value="2">Darker (black-hot)</option></select>
@@ -129,8 +155,14 @@ a{color:#f0a070}
           <span>Ignore top edge of picture (%)</span><input type="number" id="eT" value="0" min="0" max="45">
           <span>Ignore bottom edge of picture (%)</span><input type="number" id="eB" value="0" min="0" max="45">
           <span>Count fast bats seen as one streak</span><select id="strk"><option value="1" selected>Yes</option><option value="0">No</option></select>
-          <span>Playback speed while counting</span><select id="rate"><option value="1" selected>1× (most accurate)</option><option value="2">2×</option><option value="4">4× (fast phones / laptops)</option></select>
         </div>
+      </details>
+      </div>
+      <details style="margin-top:8px"><summary>Bat detector sound (optional, last resort for species)</summary>
+      <p class="mut">Species is decided by looks. A bat detector recording (WAV) from the same night is only used when there is nothing visual to go on.</p>
+      <label class="file"><input type="file" id="batWav" accept=".wav,audio/wav,audio/x-wav"><b>Add bat detector WAV</b></label>
+      <div class="set hide" id="offsetRow"><span>Detector started this many seconds <b>before</b> the video (use − if after)</span><input type="number" id="offset" value="0" step="0.1"></div>
+      <div id="wavMsg"></div>
       </details>
     </div></div>
   </div>
@@ -139,29 +171,46 @@ a{color:#f0a070}
     <button class="btn" id="go">▶ Count bats</button>
     <div id="runBox" class="hide">
       <div class="bar"><i id="vbar"></i></div>
+      <div class="mut" id="batchStat"></div>
       <div class="mut" id="vstat">Starting…</div>
       <canvas class="view" id="liveCv" style="margin-top:8px"></canvas>
       <button class="btn sec" id="stop" style="margin-top:8px">■ Stop</button>
     </div>
   </div>
 
-  <div class="card hide" id="resCard">
-    <h2>Results</h2>
-    <div class="big"><div><b id="rIn">0</b><span>IN</span></div><div><b id="rOut">0</b><span>OUT</span></div><div><b id="rNet">0</b><span>NET (IN − OUT)</span></div></div>
-    <div class="big" style="margin-top:8px"><div><b id="rG" style="color:var(--ghost)">0</b><span>👻 ghost bat</span></div><div><b id="rO" style="color:var(--other)">0</b><span>other bat</span></div><div><b id="rH" style="color:#9fe0b6">0</b><span>seen &amp; heard</span></div></div>
-    <p class="mut" id="rNote"></p>
+</section>
+
+<!-- ================= CHECK ================= -->
+<section id="tab-check" class="hide">
+  <p class="empty" id="checkEmpty">Count a video first. Every bat it counts shows up here to replay and check.</p>
+  <div class="card hide" id="checkCard">
+    <h2>Check the counts</h2>
+    <button class="btn" id="qrStart">▶ Quick review</button>
     <div class="card" id="replayCard" style="display:none;background:var(--card2);margin-top:10px">
-      <b id="replayTitle">Replay</b>
-      <div style="position:relative;margin-top:6px"><video id="replayVid" playsinline muted controls style="width:100%;border-radius:10px;background:#000;display:block"></video>
+      <b id="replayTitle">Replay</b> <span class="mut" id="replayProg"></span>
+      <div id="replayWrap" style="position:relative;margin-top:6px"><video id="replayVid" playsinline muted controls style="width:100%;border-radius:10px;background:#000;display:block"></video>
       <canvas id="replayZone" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></canvas></div>
-      <div class="rv"><button class="btn sec" id="replayAgain">↺ Replay</button><button class="btn sec ok" id="replayOk">✔ Real bat</button><button class="btn sec no" id="replayNo">✘ Not a bat</button></div>
-      <div class="rv"><button class="btn sec gh" id="replayGhost">👻 Ghost bat</button><button class="btn sec ot" id="replayOther">Other bat</button></div>
-      <div class="rv"><button class="btn sec" id="replayPrev">◀ Previous</button><button class="btn sec" id="replayNext">Next ▶</button><button class="btn sec" id="replayClose">Close</button></div>
+      <div class="rv big3"><button class="btn sec gh" id="replayGhost">👻 Ghost bat</button><button class="btn sec ot" id="replayOther">Other bat</button><button class="btn sec no" id="replayNo">✘ Not a bat</button></div>
+      <div class="rv" id="replayDir" style="display:none"><button class="btn sec" data-rdir="IN">It went IN</button><button class="btn sec" data-rdir="OUT">It went OUT</button></div>
+      <div class="rv"><button class="btn sec" id="replayPrev">◀</button><button class="btn sec" id="replayAgain">↺ Replay</button><button class="btn sec ok" id="replayOk">✔ Bat, not sure which</button><button class="btn sec" id="replayNext">▶</button></div>
+      <div class="rv"><button class="btn sec" id="replayClose">Close</button></div>
+      <p class="mut" style="margin:6px 0 0">Swipe the video left or right for the next or previous bat. Tapping Ghost, Other or Not a bat moves on to the next one.</p>
     </div>
     <p class="mut" id="reviewNote" style="margin:10px 0 0"></p>
     <div id="evList"></div>
     <button class="btn sec" id="copyV" style="margin-top:10px">Copy results (paste into Excel / notes)</button>
     <textarea id="csvV" class="hide" readonly></textarea>
+  </div>
+</section>
+
+<!-- ================= REPORT ================= -->
+<section id="tab-report" class="hide">
+  <p class="empty" id="reportEmpty">Count a video first. The report and graph show up here.</p>
+  <div class="card hide" id="resCard">
+    <h2>Results</h2>
+    <div class="big"><div><b id="rIn">0</b><span>IN</span></div><div><b id="rOut">0</b><span>OUT</span></div><div><b id="rNet">0</b><span>NET (IN − OUT)</span></div></div>
+    <div class="big" style="margin-top:8px"><div><b id="rG" style="color:var(--ghost)">0</b><span>👻 ghost bat</span></div><div><b id="rO" style="color:var(--other)">0</b><span>other bat</span></div><div><b id="rH" style="color:#9fe0b6">0</b><span>seen &amp; heard</span></div></div>
+    <p class="mut" id="rNote"></p>
   </div>
 
   <div class="card hide rep" id="repCard">
@@ -187,7 +236,38 @@ a{color:#f0a070}
       </div>
     </details>
     <div class="rv" style="margin-top:10px"><button class="btn sec" id="repShare">Share report</button><button class="btn sec" id="repCopy">Copy report</button></div>
+    <div class="rv"><button class="btn sec" id="repSaveHtml">💾 Save report file</button><button class="btn sec" id="repSaveCsv">💾 Save CSV</button></div>
+    <div class="mut" id="saveMsg" style="margin-top:4px"></div>
     <textarea id="repText" class="hide" readonly></textarea>
+  </div>
+</section>
+
+<!-- ================= GHOST VS OTHER ================= -->
+<section id="tab-ghost" class="hide">
+  <div class="card">
+    <h2>Teach the app to tell ghost bats from other bats</h2>
+    <ol class="mut" style="padding-left:20px;margin:4px 0 10px">
+      <li>Count a video as usual.</li>
+      <li>Open <b>Check</b>, watch each bat and tap <b>👻 Ghost bat</b>, <b>Other bat</b> or <b>Not a bat</b>.</li>
+      <li>After 3 of each it starts guessing the rest by how they look (size, speed, wingbeat, shape, brightness). Sound is only a last resort.</li>
+      <li>Keep going until you have around 200 of each and the score is high.</li>
+    </ol>
+    <div id="labStats"></div>
+    <div class="rv"><button class="btn sec" id="labExport">⬆ Export my labels</button><label class="btn sec" style="text-align:center;cursor:pointer"><input type="file" id="labImport" accept=".json,application/json,*/*">⬇ Import labels</label></div>
+    <div class="rv"><button class="btn sec" id="labClear">Delete all labels</button></div>
+    <div id="labMsg"></div>
+  </div>
+</section>
+
+<!-- ================= HISTORY ================= -->
+<section id="tab-history" class="hide">
+  <div class="card">
+    <h2>Count history</h2>
+    <p class="mut" style="margin-top:0">Every count is kept on this phone, so you can compare nights.</p>
+    <div class="set"><span>Cave</span><select id="histCave" style="width:180px"></select></div>
+    <div id="histChart" style="margin-top:10px"></div>
+    <div id="histList"></div>
+    <div class="rv" style="margin-top:10px"><button class="btn sec" id="histCsv">💾 Save history (CSV)</button></div>
   </div>
 </section>
 
@@ -217,7 +297,7 @@ a{color:#f0a070}
       <li><b>Internet is locked off.</b> The page carries a security rule (Content-Security-Policy) that stops it from connecting to any server. <span id="netTest" class="mut">Checking…</span></li>
       <li><b>No accounts, no tracking, no ads, no cookies.</b> It doesn't use your camera, microphone or location.</li>
       <li><b>No back doors:</b> there is no hidden code. Every line is in this one page (View source), and it can be checked by anyone.</li>
-      <li>Close the page and everything you looked at is gone.</li>
+      <li>Your labels, cave setups and count history are kept only on this phone. Videos are never copied or saved.</li>
     </ul>
   </div>
   <div class="card">
@@ -738,10 +818,17 @@ const $ = (id) => document.getElementById(id);
 const pct = (v) => Math.round(v * 100) + "%";
 
 // ---------- tabs ----------
-document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
-  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x === b));
-  ["video", "sound", "about"].forEach((t) => $("tab-" + t).classList.toggle("hide", t !== b.dataset.tab));
-});
+const TABS = [...document.querySelectorAll("nav button")].map((b) => b.dataset.tab);
+function showTab(t) {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("on", x.dataset.tab === t));
+  TABS.forEach((n) => $("tab-" + n).classList.toggle("hide", n !== t));
+  $("runBar").classList.toggle("hide", !(runs.length > 1 && (t === "check" || t === "report")));
+  if (t === "ghost") renderLabStats();
+  if (t === "history") renderHistory();
+  if (t !== "check") { try { $("replayVid").pause(); } catch (_) {} }
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => showTab(b.dataset.tab));
 $("aN").textContent = MODEL.meta.n_test.toLocaleString();
 $("aBal").textContent = pct(MODEL.meta.balanced);
 $("aRg").textContent = pct(MODEL.meta.recall_ghost);
@@ -826,20 +913,30 @@ const video = document.createElement("video"); video.muted = true; video.playsIn
 let vidFile = null, vidURL = null, line = null, linePts = [], batWav = null;
 const setupCv = $("setupCv");
 
-$("vidFile").onchange = async (e) => {
-  const f = e.target.files[0]; if (!f) return;
-  vidFile = f; if (vidURL) URL.revokeObjectURL(vidURL); vidURL = URL.createObjectURL(f);
-  sayMsg($("vidMsg"), "Opening video…", true);
+let queue = [], runs = [], curRun = null, pendingZone = null, zoneReady = false;
+async function loadVideo(f) {
+  vidFile = f;
+  vidURL = URL.createObjectURL(f);   // kept for replaying each counted video; freed when a new batch replaces it
   video.src = vidURL;
+  await new Promise((res, rej) => { video.onloadeddata = res; video.onerror = () => rej(new Error(f.name + ": this phone can't play this video type. MP4 (H.264) works best — AVI files need converting.")); });
+}
+$("vidFile").onchange = async (e) => {
+  const fs = [...e.target.files]; if (!fs.length) return;
+  if (vidURL && !runs.some((r) => r.url === vidURL)) URL.revokeObjectURL(vidURL);
+  queue = fs; zoneReady = false;
+  sayMsg($("vidMsg"), "Opening video…", true);
   try {
-    await new Promise((res, rej) => { video.onloadeddata = res; video.onerror = () => rej(new Error("This browser can't play this video type. MP4 (H.264) works best — AVI files need converting.")); });
+    await loadVideo(fs[0]);
     video.currentTime = Math.min(0.5, video.duration / 2); await new Promise((r) => video.onseeked = r);
   } catch (err) { sayMsg($("vidMsg"), err.message); return; }
-  sayMsg($("vidMsg"), `✔ ${f.name} · ${Math.round(video.duration)} s · ${video.videoWidth}×${video.videoHeight}`, true);
+  const f = fs[0];
+  sayMsg($("vidMsg"), fs.length > 1 ? `✔ ${fs.length} videos chosen. Draw the zone on the first one; the same zone and settings are used for all of them (same camera).`
+    : `✔ ${f.name} · ${Math.round(video.duration)} s · ${video.videoWidth}×${video.videoHeight}`, true);
+  $("queueList").innerHTML = fs.length > 1 ? fs.map((x, i) => `${i + 1}. ${x.name}`).join("<br>") : "";
   ["lineCard", "soundCard", "runCard"].forEach((id) => $(id).classList.remove("hide"));
-  $("resCard").classList.add("hide");
-  setupCv.width = video.videoWidth; setupCv.height = video.videoHeight;
-  setZoneMode(zoneMode);
+  setupCv.width = video.videoWidth; setupCv.height = video.videoHeight; zoneReady = true;
+  zoom = { s: 1, x: 0, y: 0 }; applyZoom();
+  if (pendingZone) applyZone(pendingZone); else setZoneMode(zoneMode);
 };
 function drawSetup() {
   const c = setupCv.getContext("2d"); c.drawImage(video, 0, 0, setupCv.width, setupCv.height);
@@ -882,10 +979,30 @@ $("shapeFinish").onclick = () => {
   line = { poly: linePts.slice(), a: linePts[0], b: linePts[1], inside: [cx, cy] };
   $("lineHelp").innerHTML = `✔ Shape set (${linePts.length} points). Bats flying <b>into</b> it count IN, <b>out of</b> it count OUT.`; drawSetup();
 };
-setupCv.addEventListener("pointermove", (e) => {
-  if (zoneMode !== "box" || !boxStart) return;
-  const p = cvPt(e); boxDrag = [Math.min(boxStart[0], p[0]), Math.min(boxStart[1], p[1]), Math.max(boxStart[0], p[0]), Math.max(boxStart[1], p[1])]; drawSetup();
-});
+// Taps place points, one finger drags a box, two fingers pinch-zoom (zoom never places a point).
+const ptrs = new Map(); let pinch = null, pinched = false, downAt = null, zoom = { s: 1, x: 0, y: 0 };
+const pdist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]), pmid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+function applyZoom() {
+  const W = setupCv.offsetWidth, H = setupCv.offsetHeight;
+  zoom.s = Math.max(1, Math.min(8, zoom.s));
+  zoom.x = Math.min(0, Math.max(W - W * zoom.s, zoom.x)); zoom.y = Math.min(0, Math.max(H - H * zoom.s, zoom.y));
+  setupCv.style.transform = zoom.s === 1 ? "" : `translate(${zoom.x}px,${zoom.y}px) scale(${zoom.s})`;
+  $("zoomReset").classList.toggle("hide", zoom.s === 1);
+}
+$("zoomReset").onclick = () => { zoom = { s: 1, x: 0, y: 0 }; applyZoom(); };
+$("zoneFull").onclick = () => {
+  const fs = $("lineCard").classList.toggle("fs");
+  $("zoneFull").textContent = fs ? "✔ Done" : "⛶ Full screen";
+  zoom = { s: 1, x: 0, y: 0 }; applyZoom(); if (!fs) $("lineCard").scrollIntoView({ block: "start" });
+};
+function addPoint(p) {
+  if (zoneMode === "shape") { linePts.push(p); $("lineHelp").innerHTML = `${linePts.length} point(s). Keep tapping around the entrance, then <b>Finish shape</b>.`; drawSetup(); return; }
+  linePts.push(p);
+  if (linePts.length === 1) $("lineHelp").innerHTML = "Now tap where the line <b>ends</b>.";
+  else if (linePts.length === 2) $("lineHelp").innerHTML = "Now tap the <b>roost / cave side</b> of the line (bats going this way count as IN).";
+  else { line = { a: linePts[0], b: linePts[1], inside: linePts[2] }; $("lineHelp").innerHTML = "✔ Line set. Bats crossing towards the green dot count as <b>IN</b>, away as <b>OUT</b>."; }
+  drawSetup();
+}
 const endBox = (e) => {
   if (zoneMode !== "box" || !boxStart) return;
   const p = cvPt(e), b = [Math.min(boxStart[0], p[0]), Math.min(boxStart[1], p[1]), Math.max(boxStart[0], p[0]), Math.max(boxStart[1], p[1])];
@@ -895,20 +1012,38 @@ const endBox = (e) => {
   $("lineHelp").innerHTML = "✔ Box set. Bats flying <b>into</b> the box count IN, <b>out of</b> it count OUT.";
   drawSetup();
 };
-setupCv.addEventListener("pointerup", endBox);
-setupCv.addEventListener("pointercancel", endBox);
 setupCv.addEventListener("pointerdown", (e) => {
-  if (zoneMode === "box") { if (line) return; setupCv.setPointerCapture && setupCv.setPointerCapture(e.pointerId); boxStart = cvPt(e); boxDrag = [...boxStart, ...boxStart]; return; }
-  if (line) return;
-  if (zoneMode === "shape") { linePts.push(cvPt(e)); $("lineHelp").innerHTML = `${linePts.length} point(s). Keep tapping around the entrance, then <b>Finish shape</b>.`; drawSetup(); return; }
-  const r = setupCv.getBoundingClientRect();
-  const p = [(e.clientX - r.left) / r.width * setupCv.width, (e.clientY - r.top) / r.height * setupCv.height];
-  linePts.push(p);
-  if (linePts.length === 1) $("lineHelp").innerHTML = "Now tap where the line <b>ends</b>.";
-  else if (linePts.length === 2) $("lineHelp").innerHTML = "Now tap the <b>roost / cave side</b> of the line (bats going this way count as IN).";
-  else { line = { a: linePts[0], b: linePts[1], inside: linePts[2] }; $("lineHelp").innerHTML = "✔ Line set. Bats crossing towards the green dot count as <b>IN</b>, away as <b>OUT</b>."; }
-  drawSetup();
+  try { setupCv.setPointerCapture(e.pointerId); } catch (_) {}
+  ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+  if (ptrs.size >= 2) {
+    pinched = true; boxStart = boxDrag = null; drawSetup();
+    const [a, b] = [...ptrs.values()]; pinch = { d: Math.max(10, pdist(a, b)), m: pmid(a, b), z: { ...zoom } }; return;
+  }
+  pinched = false; downAt = [e.clientX, e.clientY];
+  if (zoneMode === "box" && !line) { boxStart = cvPt(e); boxDrag = [...boxStart, ...boxStart]; }
 });
+setupCv.addEventListener("pointermove", (e) => {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+  if (pinch && ptrs.size >= 2) {
+    const [a, b] = [...ptrs.values()], r = $("zoneWrap").getBoundingClientRect(), m = pmid(a, b);
+    const s2 = Math.max(1, Math.min(8, pinch.z.s * pdist(a, b) / pinch.d));
+    const cx = (pinch.m[0] - r.left - pinch.z.x) / pinch.z.s, cy = (pinch.m[1] - r.top - pinch.z.y) / pinch.z.s;
+    zoom = { s: s2, x: m[0] - r.left - cx * s2, y: m[1] - r.top - cy * s2 }; applyZoom(); return;
+  }
+  if (zoneMode === "box" && boxStart) { const p = cvPt(e); boxDrag = [Math.min(boxStart[0], p[0]), Math.min(boxStart[1], p[1]), Math.max(boxStart[0], p[0]), Math.max(boxStart[1], p[1])]; drawSetup(); }
+});
+function endPtr(e) {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.delete(e.pointerId);
+  if (ptrs.size < 2) pinch = null;
+  if (pinched) { if (!ptrs.size) pinched = false; return; }
+  if (zoneMode === "box") { endBox(e); return; }
+  if (e.type === "pointercancel" || line || !downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 14) return;
+  addPoint(cvPt(e));
+}
+setupCv.addEventListener("pointerup", endPtr);
+setupCv.addEventListener("pointercancel", endPtr);
 $("lineReset").onclick = () => setZoneMode(zoneMode);
 $("lineDefault").onclick = () => {
   const W = setupCv.width, H = setupCv.height;
@@ -927,22 +1062,46 @@ $("stop").onclick = () => { stopFlag = true; };
 $("go").onclick = async () => {
   if (!line && zoneMode === "shape" && linePts.length >= 3) $("shapeFinish").onclick();
   if (!line) { $("lineDefault").onclick(); }
-  stopFlag = false; $("go").disabled = true; $("runBox").classList.remove("hide"); $("resCard").classList.add("hide"); $("repCard").classList.add("hide");
+  if ($("lineCard").classList.contains("fs")) $("zoneFull").onclick();
+  stopFlag = false; $("go").disabled = true; $("runBox").classList.remove("hide");
+  const files = queue.length ? queue : [vidFile], done = [];
+  keepAwake(true);
+  try {
+    for (let qi = 0; qi < files.length && !stopFlag; qi++) {
+      batchLabel = files.length > 1 ? `Video ${qi + 1} of ${files.length} (${files[qi].name}) · ` : "";
+      $("batchStat").textContent = batchLabel;
+      if (vidFile !== files[qi]) {
+        try { await loadVideo(files[qi]); }
+        catch (err) { sayMsg($("vidMsg"), err.message + " Skipped it."); continue; }
+      }
+      done.push(await countOne());
+    }
+  } finally { keepAwake(false); }
+  $("go").disabled = false; $("runBox").classList.add("hide"); $("batchStat").textContent = "";
+  if (!done.length) return;
+  runs.forEach((r) => { if (!done.some((d) => d.url === r.url)) URL.revokeObjectURL(r.url); });
+  runs = done; done.forEach(saveHistory);
+  $("runSel").innerHTML = runs.map((r, i) => `<option value="${i}">${i + 1}. ${r.file.name} · IN ${r.events.filter((e) => e.dir === "IN").length} OUT ${r.events.filter((e) => e.dir === "OUT").length}</option>`).join("");
+  showRun(0); showTab("check");
+};
+let batchLabel = "";
+async function countOne() {
   const PW = +$("pw").value, sc = PW / 960;
-  const pw = Math.min(PW, video.videoWidth), ph = Math.round(video.videoHeight * pw / video.videoWidth), k = pw / video.videoWidth;
+  const pw = Math.min(PW, video.videoWidth), ph = Math.round(video.videoHeight * pw / video.videoWidth);
+  const kx = pw / (setupCv.width || video.videoWidth), ky = ph / (setupCv.height || video.videoHeight), sp = (q) => [q[0] * kx, q[1] * ky];
   const opts = { sensitivity: +$("sens").value, minArea: Math.max(1, +$("minA").value * sc * sc), maxArea: +$("maxA").value * sc * sc, gate: +$("gate").value * sc, deadZone: +$("dz").value * sc,
     minTravel: +$("mtrav").value * sc, minPoints: Math.max(1, +$("mpts").value), oneDir: +$("odir").value, axisTol: +$("axt").value, thin: +$("thin").value,
     maxMissed: +$("miss").value, warmup: +$("warm").value, edges: [+$("eL").value, +$("eR").value, +$("eT").value, +$("eB").value],
     polarity: +$("pol").value, minContrast: +$("mcon").value, minLengths: +$("mlen").value, minStraight: +$("mstr").value, streaks: $("strk").value === "1" };
-  const lineP = { a: line.a.map((v) => v * k), b: line.b.map((v) => v * k), inside: line.inside.map((v) => v * k), box: line.box ? line.box.map((v) => v * k) : null, poly: line.poly ? line.poly.map((q) => q.map((v) => v * k)) : null };
+  const lineP = { a: sp(line.a), b: sp(line.b), inside: sp(line.inside), box: line.box ? [...sp(line.box.slice(0, 2)), ...sp(line.box.slice(2))] : null, poly: line.poly ? line.poly.map(sp) : null };
   const counter = GHV.makeCounter(pw, ph, lineP, opts);
   lastProcW = pw;
   const proc = document.createElement("canvas"); proc.width = pw; proc.height = ph; const pctx = proc.getContext("2d", { willReadFrequently: true });
   const live = $("liveCv"); live.width = pw; live.height = ph; const lctx = live.getContext("2d");
   const gray = new Uint8Array(pw * ph), crops = [];
-  let frameN = 0; const firstN = +$("firstN").value;
+  let frameN = 0, cut = false; const firstN = +$("firstN").value;
   const handle = (t) => {
-    if (firstN > 0 && t > firstN) { stopFlag = true; return; }
+    if (firstN > 0 && t > firstN) { cut = true; return; }
     pctx.drawImage(video, 0, 0, pw, ph);
     const d = pctx.getImageData(0, 0, pw, ph).data;
     for (let i = 0, j = 0; i < gray.length; i++, j += 4) gray[i] = (d[j] * 77 + d[j + 1] * 150 + d[j + 2] * 29) >> 8;
@@ -962,6 +1121,7 @@ $("go").onclick = async () => {
       lctx.font = "bold 18px sans-serif"; lctx.fillStyle = "#3fb36b"; lctx.fillText("IN:  " + cn.in, 8, 22); lctx.fillStyle = "#4aa3df"; lctx.fillText("OUT: " + cn.out, 8, 44);
       $("vbar").style.width = (t / video.duration * 100).toFixed(1) + "%";
       $("vstat").textContent = `Counting… ${t.toFixed(1)} of ${video.duration.toFixed(1)} s · IN ${cn.in} · OUT ${cn.out}`;
+      progressNote(`${batchLabel}${Math.round(t / video.duration * 100)}% · IN ${cn.in} · OUT ${cn.out}`);
     }
   };
   try {
@@ -970,20 +1130,21 @@ $("go").onclick = async () => {
       video.playbackRate = +$("rate").value;
       await new Promise((resolve) => {
         const cb = (now, meta) => {
-          if (stopFlag) { video.pause(); resolve(); return; }
+          if (stopFlag || cut) { video.pause(); resolve(); return; }
           handle(meta.mediaTime); if (!video.ended) video.requestVideoFrameCallback(cb);
         };
         video.requestVideoFrameCallback(cb); video.onended = () => setTimeout(resolve, 50);
         video.play().catch((e) => { sayMsg($("vidMsg"), "Couldn't play the video: " + e.message); resolve(); });
       });
     } else {   // older browsers: step through the video frame by frame
-      for (let t = 0; t < video.duration && !stopFlag; t += 1 / 30) { video.currentTime = t; await new Promise((r) => video.onseeked = r); handle(t); }
+      for (let t = 0; t < video.duration && !stopFlag && !cut; t += 1 / 30) { video.currentTime = t; await new Promise((r) => video.onseeked = r); handle(t); }
     }
   } finally { video.pause(); }
   $("vstat").textContent = "Listening to the sound for each bat…"; await yieldUI();
-  await finishVideo(counter.events, video.duration);
-  $("go").disabled = false; $("runBox").classList.add("hide");
-};
+  const vz = (q) => [q[0] * video.videoWidth / setupCv.width, q[1] * video.videoHeight / setupCv.height];
+  const zone = line.poly ? { poly: line.poly.map(vz) } : line.box ? { box: [...vz(line.box.slice(0, 2)), ...vz(line.box.slice(2))] } : { a: vz(line.a), b: vz(line.b) };
+  return await finishVideo(counter.events, video.duration, { procW: pw, zone });
+}
 
 async function videoSound() {
   if (batWav) return { sf: GH.soundFile(batWav.rate, batWav.x, +$("offset").value || 0), src: "bat detector WAV (" + batWav.name + ")" };
@@ -997,7 +1158,7 @@ async function videoSound() {
   } catch (e) { return { sf: null, src: "no sound track in this video" }; }
 }
 
-async function finishVideo(events, duration) {
+async function finishVideo(events, duration, extra) {
   const { sf, src } = await videoSound();
   let passes = [];
   if (sf) passes = GH.findBatPasses(sf, { lo_khz: 5, loud_x: 8, min_calls: 1, gap_ms: 500, min_ms: 1 }, 0, duration).map((p) => ({ vs: p.start - sf.offset, ve: p.end - sf.offset }));
@@ -1016,21 +1177,26 @@ async function finishVideo(events, duration) {
     if (ev.ghost != null) { if (ev.ghost >= 0.5) nG++; else nO++; }
     if (ev.heard) nH++;
   }
-  const nin = events.filter((e) => e.dir === "IN").length, nout = events.length - nin;
-  $("rIn").textContent = nin; $("rOut").textContent = nout; $("rNet").textContent = nin - nout;
-  $("rG").textContent = nG; $("rO").textContent = nO; $("rH").textContent = nH;
-  $("rNote").innerHTML = `Sound used: ${src}. ${sf ? passes.length + " bat call group(s) heard." : ""}${stopFlag ? " Counting was stopped early." : ""}` +
+  const note = `Sound used: ${src}. ${sf ? passes.length + " bat call group(s) heard." : ""}${stopFlag ? " Counting was stopped early." : ""}` +
     (lowRate ? `<div class="msg">This sound only goes up to ${Math.round(sf.rate / 2000)} kHz (normal trail-cam microphone). Ghost Hunter can tell a bat was <b>heard</b>, but it needs a bat detector recording (192 kHz or more, e.g. your Ghost Hunter monitor) to say <b>which species</b>. Add the detector WAV in step 3.</div>` : "");
+  return { file: vidFile, url: vidURL, events, src, note, dur: duration, procW: extra.procW, zone: extra.zone, hid: "h" + Date.now() + Math.random().toString(36).slice(2, 6) };
+}
+function showRun(i) {
+  const run = runs[i]; if (!run) return;
+  curRun = run; vidFile = run.file; vidURL = run.url; lastProcW = run.procW; $("runSel").value = i;
+  const events = run.events, line = run.zone;
+  $("rNote").innerHTML = run.note;
   $("evList").innerHTML = events.length ? events.map((e, i) => `<div class="ev" id="ev${i}"><img src="${e.img || ""}" alt=""><div style="flex:1"><b>#${i + 1} · <span class="evdir">${e.dir}</span></b> <span class="mut">at ${Math.floor(e.t / 60)}:${(e.t % 60).toFixed(1).padStart(4, "0")}</span><br>${e.ghost != null ? verdictChip(e.ghost) : `<span class="chip n">${e.idNote}</span>`} ${e.heard ? '<span class="chip h">seen &amp; heard</span>' : '<span class="mut" style="font-size:12.5px">seen only</span>'}
       <div class="rv dirq" style="display:none"><button class="btn sec" data-dir="IN" data-i="${i}">IN</button><button class="btn sec" data-dir="OUT" data-i="${i}">OUT</button></div>
       <div class="rv"><button class="btn sec" data-play="${i}">▶ Replay</button><button class="btn sec ok" data-ok="${i}">✔ Bat</button><button class="btn sec no" data-no="${i}">✘ Not a bat</button></div>
       <div class="rv"><button class="btn sec gh" data-sp="ghost" data-i="${i}">👻 Ghost bat</button><button class="btn sec ot" data-sp="other" data-i="${i}">Other bat</button></div><div class="spLine" style="margin-top:4px"></div></div></div>`).join("")
     : `<p class="mut">No bats crossed the ${line && (line.box || line.poly) ? "zone" : "line"}. Try a lower Sensitivity number, or check the ${line && (line.box || line.poly) ? "zone" : "line"} is where bats fly.</p>`;
-  reviewEvents = events; reviewSrc = src; reviewZone = line && line.poly ? { poly: line.poly } : line && line.box ? { box: line.box } : line ? { a: line.a, b: line.b } : null;
+  reviewEvents = events; reviewSrc = run.src; reviewZone = run.zone; reviewIdx = -1;
   $("replayCard").style.display = "none"; refreshReview();
   $("csvV").classList.add("hide"); $("copyV").textContent = "Copy results (paste into Excel / notes)";
-  $("resCard").classList.remove("hide"); $("resCard").scrollIntoView({ behavior: "smooth" });
+  ["resCard", "checkCard"].forEach((id) => $(id).classList.remove("hide")); ["checkEmpty", "reportEmpty"].forEach((id) => $(id).classList.add("hide"));
 }
+$("runSel").onchange = () => { $("replayVid").pause(); $("replayCard").style.display = "none"; showRun(+$("runSel").value); };
 $("copyV").onclick = () => copyText($("csvV"), $("copyV"));
 
 // Mobile: replay every counted bat and confirm it (like the PC's Review tab)
@@ -1058,7 +1224,11 @@ function refreshReview() {
     const sl = row.querySelector(".spLine"); if (sl) sl.innerHTML = speciesChip(e.final);
   });
   if (reviewIdx >= 0 && ev[reviewIdx]) { $("replayGhost").classList.toggle("on", ev[reviewIdx].tag === "ghost"); $("replayOther").classList.toggle("on", ev[reviewIdx].tag === "other"); }
-  if (reviewIdx >= 0 && ev[reviewIdx]) { $("replayOk").classList.toggle("on", ev[reviewIdx].ok === true); $("replayNo").classList.toggle("on", ev[reviewIdx].ok === false); }
+  if (reviewIdx >= 0 && ev[reviewIdx]) { $("replayOk").classList.toggle("on", ev[reviewIdx].ok === true && !ev[reviewIdx].tag); $("replayNo").classList.toggle("on", ev[reviewIdx].ok === false);
+    $("replayDir").style.display = ev[reviewIdx].streak ? "flex" : "none"; $("replayDir").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.rdir === ev[reviewIdx].dir)); }
+  const nChk = ev.filter((e) => !unchecked(e)).length;
+  $("replayProg").textContent = ev.length ? `· ${nChk} of ${ev.length} checked` : "";
+  $("qrStart").textContent = nChk < ev.length ? `▶ Quick review (${ev.length - nChk} to check)` : "▶ Quick review (all checked, go again)";
   const f2 = (x) => x == null ? "" : (+x).toFixed(2);
   const rows = [["bat", "time_s", "clock", "direction", "species", "species_from", "species_confidence_pct", "sound_verdict", "ghost_chance_pct", "seen_and_heard", "checked", "size", "speed", "wingbeat"]].concat(ev.map((e, i) => [i + 1, e.t, clockOf(e.t), e.dir, spName(e.final.sp), e.final.from, e.final.conf == null ? "" : Math.round(e.final.conf * 100), e.ghost == null ? e.idNote : e.ghost >= 0.5 ? "ghost bat" : "other bat", e.ghost == null ? "" : Math.round(e.ghost * 100), e.heard ? "yes" : "no", e.ok === true ? "real bat" : e.ok === false ? "not a bat" : "not checked", f2(e.feat && e.feat.size), f2(e.feat && e.feat.speed), f2(e.feat && e.feat.flap)]));
   rows.unshift(["# Ghost Hunter mobile v5.1", vidFile ? vidFile.name : "", `IN ${nin}`, `OUT ${nout}`, `checked real ${yes}; not a bat ${no}; not checked ${todo}`, "sound: " + reviewSrc.replace(/,/g, ";")]);
@@ -1082,7 +1252,7 @@ function openReplay(i) {
   reviewIdx = i; const v = $("replayVid");
   if (v.dataset.src !== vidURL) { v.src = vidURL; v.dataset.src = vidURL; }
   $("replayCard").style.display = "block";
-  $("replayTitle").textContent = `Bat #${i + 1} of ${reviewEvents.length} · ${e.dir} at ${fmtT(e.t)}`;
+  $("replayTitle").textContent = `Bat #${i + 1} of ${reviewEvents.length} · ${e.dir === "?" ? "IN or OUT?" : e.dir} at ${fmtT(e.t)}`;
   const start = Math.max(0, e.t - 3); replayEnd = Math.min(v.duration || e.t + 3, e.t + 3);
   const go = () => { v.currentTime = start; v.play().catch(() => {}); drawReplayZone(); };
   if (v.readyState >= 1) go(); else v.onloadedmetadata = go;
@@ -1096,8 +1266,32 @@ $("replayPrev").onclick = () => openReplay(Math.max(0, reviewIdx - 1));
 $("replayNext").onclick = () => openReplay(Math.min(reviewEvents.length - 1, reviewIdx + 1));
 $("replayClose").onclick = () => { $("replayVid").pause(); $("replayCard").style.display = "none"; };
 const markEv = (i, ok) => { const e = reviewEvents[i]; if (!e) return; e.ok = e.ok === ok ? undefined : ok; refreshReview(); };
-$("replayOk").onclick = () => { markEv(reviewIdx, true); if (reviewIdx < reviewEvents.length - 1) openReplay(reviewIdx + 1); };
-$("replayNo").onclick = () => { markEv(reviewIdx, false); if (reviewIdx < reviewEvents.length - 1) openReplay(reviewIdx + 1); };
+const unchecked = (e) => e.ok === undefined && !e.tag;
+function nextBat() {
+  const n = reviewEvents.length;
+  for (let k = 1; k <= n; k++) { const j = (reviewIdx + k) % n; if (unchecked(reviewEvents[j])) { openReplay(j); return; } }
+  $("replayVid").pause(); $("replayCard").style.display = "none";
+  $("reviewNote").insertAdjacentHTML("afterbegin", "<div class='msg okmsg'>✔ All bats checked. The Report tab is up to date.</div>");
+}
+$("replayOk").onclick = () => { markEv(reviewIdx, true); if (reviewEvents[reviewIdx] && reviewEvents[reviewIdx].ok) nextBat(); };
+$("replayNo").onclick = () => { markEv(reviewIdx, false); if (reviewEvents[reviewIdx] && reviewEvents[reviewIdx].ok === false) nextBat(); };
+$("qrStart").onclick = () => { if (!reviewEvents.length) return; const j = reviewEvents.findIndex(unchecked); reviewIdx = -1; openReplay(j >= 0 ? j : 0); };
+document.querySelectorAll("[data-rdir]").forEach((b) => b.onclick = () => { const e = reviewEvents[reviewIdx]; if (e) { e.dir = b.dataset.rdir; refreshReview(); $("replayTitle").textContent = `Bat #${reviewIdx + 1} of ${reviewEvents.length} · ${e.dir} at ${fmtT(e.t)}`; } });
+(() => {   // swipe the replay left / right for next / previous
+  let sx = null, sy = 0;
+  const w = $("replayWrap");
+  w.addEventListener("touchstart", (e) => { const t = e.touches[0], r = w.getBoundingClientRect(); sx = t.clientY > r.bottom - 56 ? null : t.clientX; sy = t.clientY; }, { passive: true });
+  w.addEventListener("touchend", (e) => {
+    if (sx == null) return; const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy; sx = null;
+    if (Math.abs(dx) > 60 && Math.abs(dy) < 60) openReplay(Math.max(0, Math.min(reviewEvents.length - 1, reviewIdx + (dx < 0 ? 1 : -1))));
+  }, { passive: true });
+})();
+document.addEventListener("keydown", (e) => {   // PC-style keys when a keyboard is attached: G, O, N
+  if ($("replayCard").style.display === "none" || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  const k = e.key.toLowerCase();
+  if (k === "g") $("replayGhost").onclick(); else if (k === "o") $("replayOther").onclick(); else if (k === "n") $("replayNo").onclick();
+  else if (k === "arrowright") $("replayNext").onclick(); else if (k === "arrowleft") $("replayPrev").onclick();
+});
 $("evList").addEventListener("click", (ev) => {
   const b = ev.target.closest("button"); if (!b) return;
   if (b.dataset.play != null) openReplay(+b.dataset.play);
@@ -1106,14 +1300,14 @@ $("evList").addEventListener("click", (ev) => {
   else if (b.dataset.dir) { const e = reviewEvents[+b.dataset.i]; if (e) { e.dir = b.dataset.dir; refreshReview(); } }
   else if (b.dataset.sp) tagSpecies(+b.dataset.i, b.dataset.sp);
 });
-$("replayGhost").onclick = () => tagSpecies(reviewIdx, "ghost");
-$("replayOther").onclick = () => tagSpecies(reviewIdx, "other");
+$("replayGhost").onclick = () => { tagSpecies(reviewIdx, "ghost"); if (reviewEvents[reviewIdx] && reviewEvents[reviewIdx].tag) nextBat(); };
+$("replayOther").onclick = () => { tagSpecies(reviewIdx, "other"); if (reviewEvents[reviewIdx] && reviewEvents[reviewIdx].tag) nextBat(); };
 
 // ---- Ghost bat vs other bat: decided by LOOKS. Your tags first, then what it learned
 // from the bats you tagged (size, speed, wingbeat, shape, brightness). Sound only as a last resort.
 const LKEY = "ghm_labels_v1";
 const loadLabels = () => { try { return JSON.parse(localStorage.getItem(LKEY) || "[]"); } catch (_) { return []; } };
-const saveLabels = (a) => { try { localStorage.setItem(LKEY, JSON.stringify(a.slice(-500))); } catch (_) {} };
+const saveLabels = (a) => { try { localStorage.setItem(LKEY, JSON.stringify(a.slice(-5000))); } catch (_) {} };
 const fvec = (f) => [Math.log(1 + f.size), Math.log(1 + f.speed), f.flap * 3, Math.log(Math.max(0.2, f.aspect || 1)), (f.bright || 0) / 40];
 const evKey = (e) => (vidFile ? vidFile.name : "") + "|" + e.t;
 function tagSpecies(i, sp) {
@@ -1129,11 +1323,19 @@ function looksLike(e) {
   const k0 = evKey(e), L = loadLabels().filter((r) => r.key !== k0 && r.f);
   const nG = L.filter((r) => r.sp === "ghost").length, nO = L.length - nG;
   if (nG < 3 || nO < 3) return { need: true, nG, nO };
-  const V = L.map((r) => fvec(r.f)), D = V[0].length, mu = [], sd = [];
-  for (let j = 0; j < D; j++) { const c = V.map((v) => v[j]); const m = c.reduce((a, b) => a + b, 0) / c.length; mu[j] = m; sd[j] = Math.sqrt(c.reduce((a, b) => a + (b - m) ** 2, 0) / c.length) || 1; }
-  const x = fvec(e.feat), nb = L.map((r, n) => ({ sp: r.sp, d: Math.sqrt(V[n].reduce((a, v, j) => a + ((v - x[j]) / sd[j]) ** 2, 0)) })).sort((a, b) => a.d - b.d).slice(0, 5);
-  let wg = 0, wt = 0; nb.forEach((q) => { const w = 1 / (0.3 + q.d); wt += w; if (q.sp === "ghost") wg += w; });
-  const pg = wg / wt; return { sp: pg >= 0.5 ? "ghost" : "other", conf: Math.max(pg, 1 - pg), nG, nO };
+  const pg = knnGhost(knnPrep(L), fvec(e.feat), -1); return { sp: pg >= 0.5 ? "ghost" : "other", conf: Math.max(pg, 1 - pg), nG, nO };
+}
+function knnPrep(L) {
+  const V = L.map((r) => fvec(r.f)), D = V[0].length, sd = [];
+  for (let j = 0; j < D; j++) { const c = V.map((v) => v[j]); const m = c.reduce((a, b) => a + b, 0) / c.length; sd[j] = Math.sqrt(c.reduce((a, b) => a + (b - m) ** 2, 0) / c.length) || 1; }
+  return { L, V, sd };
+}
+function knnGhost(M, x, skip) {   // chance it is a ghost bat, from the 5 most alike labelled bats
+  const nb = [];
+  M.V.forEach((v, n) => { if (n !== skip) nb.push({ sp: M.L[n].sp, d: Math.sqrt(v.reduce((a, q, j) => a + ((q - x[j]) / M.sd[j]) ** 2, 0)) }); });
+  nb.sort((a, b) => a.d - b.d);
+  let wg = 0, wt = 0; nb.slice(0, 5).forEach((q) => { const w = 1 / (0.3 + q.d); wt += w; if (q.sp === "ghost") wg += w; });
+  return wt ? wg / wt : 0.5;
 }
 function finalSpecies(e) {
   if (e.tag) return { sp: e.tag, from: "you", conf: 1 };
@@ -1196,7 +1398,7 @@ function chartSVG(kept, dur, bin) {
 function renderReport() {
   const ev = reviewEvents || [];
   const kept = ev.filter((e) => e.ok !== false), v = $("replayVid");
-  const dur = Math.max(1, video.duration || v.duration || 0, ...ev.map((e) => e.t + 1));
+  const dur = Math.max(1, (curRun && curRun.dur) || video.duration || v.duration || 0, ...ev.map((e) => e.t + 1));
   const cnt = (f) => kept.filter(f).length, isG = (e) => e.final.sp === "ghost", isO = (e) => e.final.sp === "other";
   const nOut = cnt((e) => e.dir === "OUT"), nIn = cnt((e) => e.dir === "IN"), nQ = cnt((e) => e.dir === "?");
   const gO = cnt((e) => isG(e) && e.dir === "OUT"), gI = cnt((e) => isG(e) && e.dir === "IN");
@@ -1235,14 +1437,19 @@ function renderReport() {
   txt.push("", "Bat list:"); kept.forEach((e) => txt.push(`#${ev.indexOf(e) + 1} ${clockOf(e.t) || fmtT(e.t)} ${e.dir} ${spName(e.final.sp)} (${e.final.from})`));
   $("repText").value = txt.filter((x, i) => x !== "" || i > 3).join("\n");
   $("repCard").classList.remove("hide");
+  if (curRun) {
+    if (histRun && histRun !== curRun) saveHistory(histRun);
+    clearTimeout(histTimer); histRun = curRun; histTimer = setTimeout(() => { saveHistory(histRun); histRun = null; }, 800);
+  }
 }
+let histTimer = 0, histRun = null;
 ["recStart", "lat", "lon", "tz"].forEach((id) => {
   const el = $(id); if (id !== "recStart") { try { const s = localStorage.getItem("ghm_" + id); if (s) el.value = s; } catch (_) {} }
   el.addEventListener("change", () => { if (id !== "recStart") try { localStorage.setItem("ghm_" + id, el.value); } catch (_) {} refreshReview(); });
 });
 $("repBin").onchange = renderReport;
 // Remember counting settings between uses (like Save setup on the PC)
-document.querySelectorAll("details .set input, details .set select").forEach((el) => {
+document.querySelectorAll("#setAll input, #setAll select").forEach((el) => {
   if (!el.id || ["recStart", "lat", "lon", "tz"].includes(el.id)) return;
   try { const v = localStorage.getItem("ghm_set_" + el.id); if (v != null) el.value = v; } catch (_) {}
   el.addEventListener("change", () => { try { localStorage.setItem("ghm_set_" + el.id, el.value); } catch (_) {} });
@@ -1266,6 +1473,230 @@ $("repShare").onclick = () => {
   else if (navigator.share) navigator.share({ title, text }).catch(() => {});
   else copyText($("repText"), $("repShare"));
 };
+
+// ---------- keep counting with the screen off: screen stays awake + progress notification ----------
+let wakeLock = null, lastProg = 0;
+async function keepAwake(on) {
+  const A = window.GhostHunterAndroid;
+  if (A && A.counting) { try { A.counting(!!on); } catch (_) {} return; }
+  try {
+    if (on && navigator.wakeLock) wakeLock = await navigator.wakeLock.request("screen");
+    else if (!on && wakeLock) { wakeLock.release(); wakeLock = null; }
+  } catch (_) {}
+}
+function progressNote(text) {
+  const A = window.GhostHunterAndroid; if (!A || !A.progress) return;
+  const n = Date.now(); if (n - lastProg < 2000) return; lastProg = n;
+  try { A.progress(text); } catch (_) {}
+}
+
+// ---------- save a file (report, CSV, labels) ----------
+function saveFile(name, mime, text, msgEl) {
+  const A = window.GhostHunterAndroid;
+  if (A && A.saveFile) { try { A.saveFile(name, mime, text); if (msgEl) msgEl.textContent = "Choose where to save " + name + "…"; return; } catch (_) {} }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: mime })); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  if (msgEl) msgEl.textContent = "✔ Saved " + name;
+}
+window.ghSaved = (ok, name) => { const m = $("saveMsg"), l = $("labMsg"); const t = ok ? "✔ Saved " + (name || "") : "Not saved."; if (m) m.textContent = t; if (l && l.dataset.saving) { sayMsg(l, t, ok); delete l.dataset.saving; } };
+const safeName = (x) => String(x || "").replace(/\.[^.]+$/, "").replace(/[^\w-]+/g, "_").slice(0, 60);
+$("repSaveCsv").onclick = () => saveFile(`ghost-hunter-${safeName(vidFile && vidFile.name)}.csv`, "text/csv", $("csvV").value, $("saveMsg"));
+$("repSaveHtml").onclick = () => {
+  const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  const rows = reviewEvents.filter((e) => e.ok !== false).map((e) => `<tr><td>#${reviewEvents.indexOf(e) + 1}</td><td>${clockOf(e.t) || fmtT(e.t)}</td><td>${e.dir}</td><td>${spName(e.final.sp)}</td><td>${e.final.from}</td><td>${e.ok === true ? "checked" : ""}</td></tr>`).join("");
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ghost Hunter report</title>
+<style>body{font:15px/1.45 system-ui,sans-serif;max-width:820px;margin:20px auto;padding:0 14px;color:#1d232a}h1{font-size:22px}h3{margin:18px 0 6px}table{width:100%;border-collapse:collapse}td{padding:5px 4px;border-bottom:1px solid #ddd}svg{width:100%;height:auto;background:#252c35;border-radius:10px}.mut{color:#667}</style></head><body>
+<h1>👻 Ghost Hunter mobile v5.1 report</h1><p class="mut">${esc($("cave").value ? "Cave: " + $("cave").value + " · " : "")}Saved ${new Date().toLocaleString()}</p>
+${$("repBody").innerHTML}${$("repChart").innerHTML}${$("repTiming").innerHTML}${$("accRes").innerHTML ? "<h3>Accuracy check</h3><p>" + $("accRes").innerHTML + "</p>" : ""}
+<h3>Every bat</h3><table><tr class="mut"><td>Bat</td><td>Time</td><td>Direction</td><td>Species</td><td>Decided by</td><td></td></tr>${rows}</table></body></html>`;
+  saveFile(`ghost-hunter-report-${safeName(vidFile && vidFile.name)}.html`, "text/html", html, $("saveMsg"));
+};
+
+// ---------- presets (basic settings up front, the PC tolerances under Advanced) ----------
+const BASE = { sens: 25, pw: 640, minA: 12, maxA: 2500, gate: 60, pol: 0, mcon: 0, mlen: 2, mstr: 50, mtrav: 22, mpts: 3, odir: 30, axt: 6, thin: 0, miss: 6, warm: 30, dz: 2, firstN: 0, eL: 0, eR: 0, eT: 0, eB: 0, strk: 1 };
+const PRESETS = {
+  thermal: { ...BASE },
+  ir: { ...BASE, sens: 30, minA: 20, mstr: 60, odir: 40, mpts: 4 },
+  phone: { ...BASE, sens: 35, minA: 16, mstr: 55, odir: 35 },
+  pc: { ...BASE, sens: 100, pw: 960, minA: 50, mtrav: 30, mpts: 5, thin: 6, eR: 9 },
+};
+const SET_IDS = Object.keys(BASE);
+function setVal(id, v) { const el = $(id); if (!el) return; el.value = String(v); try { localStorage.setItem("ghm_set_" + id, el.value); } catch (_) {} }
+$("preset").onchange = () => {
+  const P = PRESETS[$("preset").value]; if (P) SET_IDS.forEach((id) => setVal(id, P[id]));
+  try { localStorage.setItem("ghm_set_preset", $("preset").value); } catch (_) {}
+};
+SET_IDS.forEach((id) => $(id) && $(id).addEventListener("change", () => {
+  const P = PRESETS[$("preset").value];
+  if (P && String(P[id]) !== $(id).value) setVal("preset", "custom");
+}));
+
+// ---------- cave setups ----------
+const CKEY = "ghm_caves_v1";
+const loadCaves = () => { try { return JSON.parse(localStorage.getItem(CKEY) || "{}"); } catch (_) { return {}; } };
+const saveCaves = (c) => { try { localStorage.setItem(CKEY, JSON.stringify(c)); } catch (_) {} };
+function fillCaveSel(sel) {
+  const names = Object.keys(loadCaves()).sort();
+  $("caveSel").innerHTML = `<option value="">${names.length ? "— choose a saved cave —" : "— none saved yet —"}</option>` + names.map((n) => `<option>${n.replace(/</g, "&lt;")}</option>`).join("");
+  $("caveSel").value = sel && names.includes(sel) ? sel : "";
+}
+function zoneNorm() {
+  if (!line || !zoneReady) return null;
+  const W = setupCv.width, H = setupCv.height, n = (p) => [p[0] / W, p[1] / H];
+  return { mode: zoneMode, a: n(line.a), b: n(line.b), inside: n(line.inside), box: line.box ? [...n(line.box.slice(0, 2)), ...n(line.box.slice(2))] : null, poly: line.poly ? line.poly.map(n) : null };
+}
+function applyZone(z) {
+  if (!z) return;
+  if (!zoneReady) { pendingZone = z; return; }
+  pendingZone = null;
+  const W = setupCv.width, H = setupCv.height, d = (p) => [p[0] * W, p[1] * H];
+  setZoneMode(z.mode || "line");
+  line = { a: d(z.a), b: d(z.b), inside: d(z.inside) };
+  if (z.box) line.box = [...d(z.box.slice(0, 2)), ...d(z.box.slice(2))];
+  if (z.poly) { line.poly = z.poly.map(d); linePts = line.poly.slice(); }
+  else if (!z.box) linePts = [line.a, line.b, line.inside];
+  $("lineHelp").innerHTML = "✔ Zone loaded from the saved cave setup. Redraw it if the camera has moved.";
+  drawSetup();
+}
+function useCave(name) {
+  const c = loadCaves()[name]; if (!c) return;
+  if (c.settings) Object.entries(c.settings).forEach(([id, v]) => setVal(id, v));
+  ["lat", "lon", "tz"].forEach((id) => { if (c[id] != null && c[id] !== "") { $(id).value = c[id]; try { localStorage.setItem("ghm_" + id, c[id]); } catch (_) {} } });
+  $("cave").value = name; $("caveName").value = name;
+  try { localStorage.setItem("ghm_cave", name); localStorage.setItem("ghm_lastCave", name); } catch (_) {}
+  if (c.zone) applyZone(c.zone);
+  $("caveMsg").textContent = `✔ Using “${name}”: zone, settings and location loaded.`;
+}
+$("caveSel").onchange = () => { if ($("caveSel").value) useCave($("caveSel").value); };
+$("caveSave").onclick = () => {
+  const name = ($("caveName").value || $("caveSel").value || $("cave").value || "").trim();
+  if (!name) { $("caveMsg").textContent = "Type a name for this cave first."; $("caveName").focus(); return; }
+  const caves = loadCaves(), settings = {};
+  ["preset", ...SET_IDS].forEach((id) => { if ($(id)) settings[id] = $(id).value; });
+  caves[name] = { settings, zone: zoneNorm() || (caves[name] && caves[name].zone) || null, lat: $("lat").value, lon: $("lon").value, tz: $("tz").value, saved: Date.now() };
+  saveCaves(caves); fillCaveSel(name); $("cave").value = name;
+  try { localStorage.setItem("ghm_cave", name); localStorage.setItem("ghm_lastCave", name); } catch (_) {}
+  $("caveMsg").textContent = `✔ Saved “${name}”${caves[name].zone ? " with its zone" : " (draw a zone and save again to keep it too)"}.`;
+};
+let delArmed = 0;
+$("caveDel").onclick = () => {
+  const name = $("caveSel").value; if (!name) { $("caveMsg").textContent = "Pick a saved cave to delete."; return; }
+  if (Date.now() - delArmed > 4000) { delArmed = Date.now(); $("caveMsg").textContent = `Tap Delete again to delete “${name}”.`; return; }
+  const caves = loadCaves(); delete caves[name]; saveCaves(caves); fillCaveSel(""); $("caveMsg").textContent = `Deleted “${name}”.`;
+};
+fillCaveSel("");
+try { const last = localStorage.getItem("ghm_lastCave"); if (last && loadCaves()[last]) { $("caveSel").value = last; useCave(last); } } catch (_) {}
+
+// ---------- count history ----------
+const HKEY = "ghm_history_v1";
+const loadHist = () => { try { return JSON.parse(localStorage.getItem(HKEY) || "[]"); } catch (_) { return []; } };
+function saveHistory(run) {
+  if (!run) return;
+  const ev = run.events, f0 = vidFile; vidFile = run.file;
+  const fin = ev.map((e) => e.final || finalSpecies(e)); vidFile = f0;
+  const kept = ev.map((e, i) => [e, fin[i]]).filter(([e]) => e.ok !== false);
+  const m = run.file.name.match(RE_DT);
+  const when = m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime() : (run.file.lastModified || Date.now());
+  const entry = { hid: run.hid, when, file: run.file.name, cave: $("cave").value || "", dur: Math.round(run.dur),
+    in: kept.filter(([e]) => e.dir === "IN").length, out: kept.filter(([e]) => e.dir === "OUT").length,
+    ghost: kept.filter(([, f]) => f.sp === "ghost").length, other: kept.filter(([, f]) => f.sp === "other").length,
+    unsure: kept.filter(([, f]) => f.sp === "unsure").length, checked: ev.filter((e) => e.ok !== undefined || e.tag).length, total: ev.length };
+  const H = loadHist().filter((h) => h.hid !== entry.hid); H.push(entry);
+  try { localStorage.setItem(HKEY, JSON.stringify(H.slice(-1000))); } catch (_) {}
+}
+function renderHistory() {
+  const H = loadHist(), caves = [...new Set(H.map((h) => h.cave || "(no cave name)"))].sort(), sel = $("histCave").value;
+  $("histCave").innerHTML = `<option value="">All caves</option>` + caves.map((c) => `<option>${c.replace(/</g, "&lt;")}</option>`).join("");
+  $("histCave").value = caves.includes(sel) ? sel : "";
+  const want = $("histCave").value, L = H.filter((h) => !want || (h.cave || "(no cave name)") === want).sort((a, b) => a.when - b.when);
+  if (!L.length) { $("histChart").innerHTML = ""; $("histList").innerHTML = `<p class="empty">No counts saved yet. Every count you do is added here.</p>`; return; }
+  const W = 600, Hh = 220, Lm = 34, R = 8, M = 110, n = L.length, bw = (W - Lm - R) / n, mx = Math.max(1, ...L.map((h) => Math.max(h.out, h.in))), sy = (Hh / 2 - 22) / mx;
+  let o = `<svg viewBox="0 0 ${W} ${Hh + 24}" xmlns="http://www.w3.org/2000/svg" font-size="11" fill="#9aa6b2" style="width:100%;height:auto;background:var(--card2);border-radius:10px">`;
+  o += `<text x="${Lm}" y="12">▲ OUT</text><text x="${Lm}" y="${Hh - 2}">▼ IN</text><line x1="${Lm}" x2="${W - R}" y1="${M}" y2="${M}" stroke="#56606b"/><text x="${Lm - 4}" y="${M - mx * sy + 4}" text-anchor="end">${mx}</text>`;
+  L.forEach((h, i) => {
+    const x = Lm + i * bw + 1, w = Math.max(1, bw - 2), gh = h.out + h.in ? h.ghost / (h.out + h.in) : 0;
+    o += `<rect x="${x}" y="${M - h.out * sy}" width="${w}" height="${h.out * sy}" fill="#4aa3df"/><rect x="${x}" y="${M - h.out * sy}" width="${w}" height="${h.out * sy * gh}" fill="#e0763a"/>`;
+    o += `<rect x="${x}" y="${M}" width="${w}" height="${h.in * sy}" fill="#4aa3df" opacity=".7"/>`;
+  });
+  const step = Math.max(1, Math.ceil(n / 6));
+  for (let i = 0; i < n; i += step) { const d = new Date(L[i].when); o += `<text x="${Lm + (i + 0.5) * bw}" y="${Hh + 16}" text-anchor="middle">${d.getDate()}/${d.getMonth() + 1}</text>`; }
+  o += `<g transform="translate(${W - R - 150},4)"><rect width="10" height="10" fill="#e0763a"/><text x="13" y="9">ghost</text><rect x="62" width="10" height="10" fill="#4aa3df"/><text x="75" y="9">all bats</text></g></svg>`;
+  $("histChart").innerHTML = o;
+  $("histList").innerHTML = `<table class="hist"><tr class="mut"><td>Date</td><td>Cave / video</td><td>OUT</td><td>IN</td><td>👻</td><td></td></tr>` +
+    L.slice().reverse().map((h) => `<tr><td>${new Date(h.when).toLocaleDateString()}<br><span class="mut">${new Date(h.when).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></td><td style="overflow-wrap:anywhere">${(h.cave || "").replace(/</g, "&lt;")}<br><span class="mut">${h.file.replace(/</g, "&lt;")} · checked ${h.checked}/${h.total}</span></td><td>${h.out}</td><td>${h.in}</td><td>${h.ghost}</td><td><button class="btn sec" data-hdel="${h.hid}" style="padding:4px 8px;font-size:12px;width:auto">✕</button></td></tr>`).join("") + `</table>`;
+}
+$("histCave").onchange = renderHistory;
+$("histList").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-hdel]"); if (!b) return;
+  if (b.dataset.armed !== "1") { b.dataset.armed = "1"; b.textContent = "Delete?"; return; }
+  try { localStorage.setItem(HKEY, JSON.stringify(loadHist().filter((h) => h.hid !== b.dataset.hdel))); } catch (_) {}
+  renderHistory();
+});
+$("histCsv").onclick = () => {
+  const H = loadHist().sort((a, b) => a.when - b.when);
+  const rows = [["date", "time", "cave", "video", "length_s", "out", "in", "net_in_minus_out", "ghost", "other", "unsure", "checked", "bats_found"]]
+    .concat(H.map((h) => { const d = new Date(h.when); return [d.toLocaleDateString(), d.toLocaleTimeString(), h.cave, h.file, h.dur, h.out, h.in, h.in - h.out, h.ghost, h.other, h.unsure, h.checked, h.total].map((v) => String(v).replace(/,/g, ";")); }));
+  saveFile("ghost-hunter-history.csv", "text/csv", rows.map((r) => r.join(",")).join("\n"), $("saveMsg"));
+};
+
+// ---------- ghost vs other: label progress, fair score, export / import ----------
+function renderLabStats() {
+  const L = loadLabels().filter((r) => r.f), nG = L.filter((r) => r.sp === "ghost").length, nO = L.length - nG;
+  const bar = (n) => `<div class="meter"><i style="width:${Math.min(100, n / 2)}%"></i></div>`;
+  let score = `<p class="mut">Tag at least 3 ghost and 3 other bats to get a score.</p>`;
+  if (nG >= 3 && nO >= 3) {
+    const M = knnPrep(L); let okG = 0, okO = 0;
+    L.forEach((r, i) => { const g = knnGhost(M, M.V[i], i) >= 0.5; if (r.sp === "ghost" && g) okG++; if (r.sp === "other" && !g) okO++; });
+    const rg = okG / nG, ro = okO / nO, fair = (rg + ro) / 2;
+    score = `<p><b style="font-size:20px">Fair score: ${Math.round(fair * 100)}%</b> <span class="mut">(ghost bats caught ${Math.round(rg * 100)}%, other bats caught ${Math.round(ro * 100)}%)</span></p>
+<p class="mut">Tested on all ${L.length} labelled bats, each judged by the others only (never by itself). ${fair >= 0.85 ? "Looking good." : "Getting there: label more bats, especially the side with fewer."}</p>`;
+  }
+  $("labStats").innerHTML = `<b>Ghost bats labelled: ${nG} / 200</b>${bar(nG)}<b>Other bats labelled: ${nO} / 200</b>${bar(nO)}<p><b style="font-size:18px">${Math.max(0, 400 - Math.min(200, nG) - Math.min(200, nO))} to go</b> <span class="mut">(${Math.min(200, nG) + Math.min(200, nO)} of 400)</span></p>` + score;
+}
+$("labExport").onclick = () => {
+  const L = loadLabels(); $("labMsg").dataset.saving = "1";
+  saveFile("ghost-hunter-mobile-labels.json", "application/json", JSON.stringify({ app: "ghost-hunter-mobile", version: 1, exported: new Date().toISOString(), labels: L }, null, 1));
+  sayMsg($("labMsg"), `Saving ${L.length} labels… Copy the file to another phone and use Import there.`, true);
+};
+function pickNum(o, names) { for (const k of Object.keys(o)) { const lk = k.toLowerCase(); if (names.some((n) => lk === n || lk.includes(n)) && isFinite(+o[k]) && o[k] !== "" && o[k] !== null && typeof o[k] !== "boolean") return { k, v: +o[k] }; } return null; }
+function importLabels(data) {
+  const out = [];
+  if (data && data.app === "ghost-hunter-mobile" && Array.isArray(data.labels)) return { list: data.labels.filter((r) => r && r.sp && r.f), noFeat: 0, fromPC: false };
+  let noFeat = 0;
+  const walk = (o, key) => {
+    if (Array.isArray(o)) { o.forEach((x, i) => walk(x, key + "#" + i)); return; }
+    if (!o || typeof o !== "object") return;
+    let lab = null;
+    for (const k of Object.keys(o)) { const v = o[k]; if (typeof v !== "string") continue; if (/^(label|species|sp|class|kind|type|answer|tag|bat)$/i.test(k)) { if (/ghost|^g$/i.test(v)) lab = "ghost"; else if (/other|^o$/i.test(v)) lab = "other"; } }
+    if (lab) {
+      const size = pickNum(o, ["size", "area", "length", "body"]), speed = pickNum(o, ["speed", "velocity", "pace"]);
+      const flap = pickNum(o, ["flap", "wingbeat", "flutter", "wing"]), aspect = pickNum(o, ["aspect", "ratio", "elong"]), bright = pickNum(o, ["bright", "contrast", "temp", "heat", "intens"]);
+      if (size && speed) out.push({ key: "import|" + key, sp: lab, f: { size: /area/i.test(size.k) ? Math.sqrt(Math.max(0, size.v)) : size.v, speed: speed.v, flap: flap ? Math.min(1, Math.abs(flap.v)) : 0, aspect: aspect ? aspect.v : 1, bright: bright ? bright.v : 0 } });
+      else noFeat++;
+      return;
+    }
+    Object.keys(o).forEach((k) => walk(o[k], key + "/" + k));
+  };
+  walk(data, "");
+  return { list: out, noFeat, fromPC: true };
+}
+$("labImport").onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return; e.target.value = "";
+  try {
+    const data = JSON.parse(await f.text()), r = importLabels(data);
+    if (!r.list.length) { sayMsg($("labMsg"), r.noFeat ? `Found ${r.noFeat} labelled bats in ${f.name}, but without the measurements this phone uses (size, speed, wingbeat). Send this file to Josh's helper so it can be converted.` : `No labelled bats found in ${f.name}.`); return; }
+    const L = loadLabels(), have = new Set(L.map((x) => x.key)); let added = 0;
+    r.list.forEach((x) => { if (!have.has(x.key)) { L.push(x); added++; } });
+    saveLabels(L); renderLabStats(); if (reviewEvents.length) refreshReview();
+    sayMsg($("labMsg"), `✔ Added ${added} labelled bats from ${f.name}${added < r.list.length ? ` (${r.list.length - added} were already here)` : ""}.` + (r.fromPC ? " These came from another app, so check the score above: if it drops, its measurements may not match the phone's." : ""), true);
+  } catch (err) { sayMsg($("labMsg"), "Couldn't read that file: " + err.message); }
+};
+let labDelArmed = 0;
+$("labClear").onclick = () => {
+  if (Date.now() - labDelArmed > 4000) { labDelArmed = Date.now(); sayMsg($("labMsg"), "Tap <b>Delete all labels</b> again to delete them. Export them first if you want a copy."); return; }
+  saveLabels([]); renderLabStats(); if (reviewEvents.length) refreshReview(); sayMsg($("labMsg"), "All labels deleted.", true);
+};
+try { const pv = localStorage.getItem("ghm_set_preset"); if (pv) $("preset").value = pv; } catch (_) {}
 setZoneMode("line");
 </script>
 <img id="ghostBatCorner" alt="" aria-hidden="true" src="data:image/gif;base64,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" style="position:fixed;left:12px;bottom:12px;width:128px;height:90px;image-rendering:pixelated;pointer-events:none;z-index:20">

@@ -1,6 +1,12 @@
 package au.ghosthunter.mobile;
 
 import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.os.Build;
+import android.view.WindowManager;
 import android.content.ClipData;
 import android.content.Intent;
 import android.net.Uri;
@@ -22,6 +28,11 @@ import java.util.Set;
  */
 public class MainActivity extends Activity {
     private static final int PICK_FILES = 1;
+    private static final int SAVE_FILE = 2;
+    private static final int NOTE_ID = 51;
+    private static final String CHANNEL = "counting";
+    private String saveText, saveName;
+    private boolean counting;
     private WebView web;
     private ValueCallback<Uri[]> pending;
 
@@ -148,6 +159,20 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
+        if (request == SAVE_FILE) {
+            boolean ok = false;
+            if (result == RESULT_OK && data != null && data.getData() != null && saveText != null) {
+                try (java.io.OutputStream out = getContentResolver().openOutputStream(data.getData())) {
+                    out.write(saveText.getBytes("UTF-8"));
+                    ok = true;
+                } catch (Exception ignored) {
+                }
+            }
+            String name = saveName == null ? "" : saveName.replace("\\", "").replace("'", "");
+            saveText = null;
+            web.evaluateJavascript("window.ghSaved && ghSaved(" + ok + ", '" + name + "')", null);
+            return;
+        }
         if (request != PICK_FILES || pending == null) {
             super.onActivityResult(request, result, data);
             return;
@@ -186,7 +211,84 @@ public class MainActivity extends Activity {
         }
     }
 
+    @SuppressWarnings("deprecation")
+    private void showNote(String text) {
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (nm == null) return;
+        Notification.Builder b;
+        if (Build.VERSION.SDK_INT >= 26) {
+            if (nm.getNotificationChannel(CHANNEL) == null) {
+                nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Counting progress", NotificationManager.IMPORTANCE_LOW));
+            }
+            b = new Notification.Builder(this, CHANNEL);
+        } else {
+            b = new Notification.Builder(this);
+        }
+        Intent open = new Intent(this, MainActivity.class).setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        b.setSmallIcon(R.mipmap.ic_launcher).setContentTitle("Ghost Hunter is counting").setContentText(text)
+                .setOngoing(true).setOnlyAlertOnce(true)
+                .setContentIntent(PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
+        try {
+            nm.notify(NOTE_ID, b.build());
+        } catch (Exception ignored) {
+        }
+    }
+
     private class ShareBridge {
+        /** Counting: keep the screen on and show progress in a notification. */
+        @JavascriptInterface
+        public void counting(final boolean on) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    counting = on;
+                    if (on) {
+                        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 3);
+                        }
+                        showNote("Counting bats…");
+                    } else {
+                        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                        if (nm != null) nm.cancel(NOTE_ID);
+                    }
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void progress(final String text) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (counting) showNote(text);
+                }
+            });
+        }
+
+        /** Save a report / CSV / labels file where the user chooses (Downloads, Drive, a USB drive...). */
+        @JavascriptInterface
+        public void saveFile(final String name, final String mime, final String text) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    saveText = text;
+                    saveName = name;
+                    Intent save = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    save.addCategory(Intent.CATEGORY_OPENABLE);
+                    save.setType(mime);
+                    save.putExtra(Intent.EXTRA_TITLE, name);
+                    try {
+                        startActivityForResult(save, SAVE_FILE);
+                    } catch (Exception e) {
+                        saveText = null;
+                        web.evaluateJavascript("window.ghSaved && ghSaved(false)", null);
+                    }
+                }
+            });
+        }
+
         @JavascriptInterface
         public void share(final String title, final String text) {
             runOnUiThread(new Runnable() {
