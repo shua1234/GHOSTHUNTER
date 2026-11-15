@@ -79,7 +79,7 @@ a{color:#8fe6b4}
 <body>
 <header>
   <div class="batgif batlogo" role="img" aria-label="Ghost Hunter bat"></div>
-  <div><h1>Ghost Hunter</h1><div class="tag">Bat Counter</div><div class="sub">Ghost bat ID · mobile v5.1 (build 5124)</div></div>
+  <div><h1>Ghost Hunter</h1><div class="tag">Bat Counter</div><div class="sub">Ghost bat ID · mobile v5.1 (build 5125)</div></div>
   <div class="lock" id="lock">🔒 Private</div>
 </header>
 <nav>
@@ -187,14 +187,6 @@ a{color:#8fe6b4}
 
 <!-- ================= CHECK ================= -->
 <section id="tab-check" class="hide">
-  <div class="card hide" id="savePrompt" style="border-color:var(--acc)">
-    <h2 style="margin-top:0">💾 Would you like to save to device?</h2>
-    <p class="mut" style="margin:4px 0 10px">Saves the report and CSV for each video. It keeps updating them as you check bats.</p>
-    <div class="rv"><button class="btn" id="spPhone">📱 This phone</button><button class="btn" id="spDrive">💽 The footage drive</button></div>
-    <label style="display:flex;gap:10px;align-items:center;margin-top:10px"><input type="checkbox" id="spRemember" style="width:22px;height:22px;flex:none"> Remember my choice</label>
-    <div id="spMsg"></div>
-  </div>
-  <div id="spDone"></div>
   <p class="empty" id="checkEmpty">Count a video first. Every bat it counts shows up here to replay and check.</p>
   <div class="card hide" id="checkCard">
     <h2>Check the counts</h2>
@@ -230,6 +222,19 @@ a{color:#8fe6b4}
 
 <!-- ================= REPORT ================= -->
 <section id="tab-report" class="hide">
+  <div class="card hide" id="doneCard" style="border-color:var(--acc)">
+    <h2 style="margin-top:0">✔ Finished counting</h2>
+    <p id="doneText" style="margin:4px 0 10px"></p>
+    <button class="btn sec" id="doneCheck">✔ Check the bats one by one (optional)</button>
+  </div>
+  <div class="card hide" id="savePrompt" style="border-color:var(--acc)">
+    <h2 style="margin-top:0">💾 Would you like to save to device?</h2>
+    <p class="mut" style="margin:4px 0 10px">Saves the report and CSV for each video. It keeps updating them as you check bats.</p>
+    <div class="rv"><button class="btn" id="spPhone">📱 This phone</button><button class="btn" id="spDrive">💽 The footage drive</button></div>
+    <label style="display:flex;gap:10px;align-items:center;margin-top:10px"><input type="checkbox" id="spRemember" style="width:22px;height:22px;flex:none"> Remember my choice</label>
+    <div id="spMsg"></div>
+  </div>
+  <div id="spDone"></div>
   <p class="empty" id="reportEmpty">Count a video first. The report and graph show up here.</p>
   <div class="card hide" id="resCard">
     <h2>Results</h2>
@@ -1324,8 +1329,19 @@ $("go").onclick = async () => {
   runs.forEach((r) => { if (!done.some((d) => d.url === r.url)) URL.revokeObjectURL(r.url); });
   runs = done; done.forEach(saveHistory);
   $("runSel").innerHTML = runs.map((r, i) => `<option value="${i}">${i + 1}. ${r.file.name} · IN ${r.events.filter((e) => e.dir === "IN").length} OUT ${r.events.filter((e) => e.dir === "OUT").length}</option>`).join("");
-  showRun(0); showTab("check"); afterCountSave();
+  showRun(0); showDone(); showTab("report"); afterCountSave();
 };
+function showDone() {
+  const tot = { in: 0, out: 0, all: 0, g: 0, secs: 0 };
+  runs.forEach((r) => { const k = r.events.filter((e) => e.ok !== false);
+    tot.in += k.filter((e) => e.dir === "IN").length; tot.out += k.filter((e) => e.dir === "OUT").length;
+    tot.all += k.length; tot.g += k.filter((e) => finalSpecies(e).sp === "ghost").length; tot.secs += r.dur || 0; });
+  const what = runs.length > 1 ? `all ${runs.length} videos (${fmtT(tot.secs)} of footage)` : `the whole video (${fmtT(tot.secs)})`;
+  $("doneText").innerHTML = `Counted ${what}${stopFlag ? " until you stopped it" : ""}: <b>${tot.all}</b> bat(s) · OUT <b>${tot.out}</b> · IN <b>${tot.in}</b> · 👻 ghost bat <b>${tot.g}</b>.` +
+    `<br><span class="mut">The full report and graph are below${runs.length > 1 ? " (pick a video at the top to see each one)" : ""}. Checking each bat is optional; the report updates as you check.</span>`;
+  $("doneCard").classList.remove("hide");
+}
+$("doneCheck").onclick = () => showTab("check");
 let batchLabel = "";
 async function countOne() {
   const PW = +$("pw").value, sc = PW / 960;
@@ -1375,8 +1391,11 @@ async function countOne() {
     video.currentTime = 0; await new Promise((r) => video.onseeked = r);
     if ("requestVideoFrameCallback" in video) {
       video.playbackRate = +$("rate").value || 1;
-      await new Promise((resolve) => {
+      let over = false;   // once this video is done, its frame callback must not carry on into the next video
+      await new Promise((res) => {
+        const resolve = () => { over = true; res(); };
         const cb = (now, meta) => {
+          if (over) return;
           if (stopFlag || cut) { video.pause(); resolve(); return; }
           handle(meta.mediaTime); if (!video.ended) video.requestVideoFrameCallback(cb);
         };
